@@ -267,6 +267,10 @@ class RandomFourierKernelApprox(KernelApproximation):
         """
         sklearn.utils.validation.check_is_fitted(self)
         X = sklearn.utils.validation.check_array(X)
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but {self.__class__.__name__} "
+                f"is expecting {self.n_features_in_} features as input.")
         X_scaled = np.sqrt(2 * self.shape) * X
         products = X_scaled @ self.random_weights_  # (n_samples, n_components)
         if self.method == 'weight_only':
@@ -451,6 +455,10 @@ class RandomBinningKernelApprox(KernelApproximation):
         """
         sklearn.utils.validation.check_is_fitted(self)
         X = sklearn.utils.validation.check_array(X)
+        if X.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X.shape[1]} features, but {self.__class__.__name__} "
+                f"is expecting {self.n_features_in_} features as input.")
         X_scaled = np.sqrt(2 * self.shape) * X
         X_hashed = self._hash_samples(X_scaled)
         Xt = self.encoder_.transform(X_hashed) / np.sqrt(self.n_components)

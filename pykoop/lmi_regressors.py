@@ -97,6 +97,14 @@ class LmiRegressor(koopman_pipeline.KoopmanRegressor):
         'dtype': 'float64',
     }
 
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.target_tags.single_output = False
+        tags.target_tags.multi_output = True
+        # Hard to guarantee exact idempotence when calling external solver.
+        tags.non_deterministic = True
+        return tags
+
     def _more_tags(self):
         reason = ('Hard to guarantee exact idempotence when calling external '
                   'solver.')
@@ -2371,6 +2379,12 @@ class LmiHinfZpkMeta(sklearn.base.RegressorMixin, sklearn.base.BaseEstimator):
         # Ensure fit has been done
         sklearn.utils.validation.check_is_fitted(self)
         return self.hinf_regressor_.predict(X)
+
+    def __sklearn_tags__(self):
+        tags = super().__sklearn_tags__()
+        tags.target_tags.single_output = False
+        tags.target_tags.multi_output = True
+        return tags
 
     def _more_tags(self):
         return {
