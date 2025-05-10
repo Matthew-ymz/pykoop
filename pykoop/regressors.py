@@ -397,6 +397,7 @@ class Dmd(koopman_pipeline.KoopmanRegressor):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        tags.target_tags.required = False
         tags.target_tags.single_output = False
         tags.target_tags.multi_output = True
         # The `dmd.Dmd` class requires X and y to have the samenumber of
@@ -513,6 +514,7 @@ class DataRegressor(koopman_pipeline.KoopmanRegressor):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        tags.target_tags.required = False
         tags.target_tags.single_output = False
         tags.target_tags.multi_output = True
         # Allow a bad score since the ``coef_`` matrix will be filled with

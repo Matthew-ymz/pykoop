@@ -99,6 +99,7 @@ class LmiRegressor(koopman_pipeline.KoopmanRegressor):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        tags.target_tags.required = False
         tags.target_tags.single_output = False
         tags.target_tags.multi_output = True
         # Hard to guarantee exact idempotence when calling external solver.
@@ -2382,6 +2383,7 @@ class LmiHinfZpkMeta(sklearn.base.RegressorMixin, sklearn.base.BaseEstimator):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        tags.target_tags.required = False
         tags.target_tags.single_output = False
         tags.target_tags.multi_output = True
         return tags

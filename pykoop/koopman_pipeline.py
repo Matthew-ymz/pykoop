@@ -1627,6 +1627,7 @@ class KoopmanRegressor(
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        tags.target_tags.required = False
         tags.target_tags.single_output = False
         tags.target_tags.multi_output = True
         return tags
