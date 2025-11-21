@@ -234,3 +234,26 @@ This project is distributed under the MIT License, except the contents of
 project, and are distributed under the BSD-3-Clause License.
 
 .. _scikit-learn: https://github.com/scikit-learn/scikit-learn
+
+
+Koopman for CE
+
+ResDMD：原始论文复现
+
+ResK_SVD_pykoopK_han_MT.ipynb：pykoop库的K矩阵和Res方法的K矩阵在蒙特卡罗积分方法，时间延迟观测函数下的对比
+
+ResK_SVD_pykoopK_ker_MT.ipynb：pykoop库的K矩阵和Res方法的K矩阵在蒙特卡罗积分方法，核函数观测函数下的对比
+
+ResK_SVD_pykoopK_pl_MT.ipynb：pykoop库的K矩阵和Res方法的K矩阵在蒙特卡罗积分方法，多项式观测函数下的对比
+
+ResK_SVD_pykoopK_rbf_MT.ipynb：pykoop库的K矩阵和Res方法的K矩阵在蒙特卡罗积分方法，径向基观测函数下的对比
+
+kuraResM.ipynb：不同样本点和积分方法下的收敛曲线
+
+kuraRes_GL_resanalysis.ipynb：高斯勒让德积分方法下的不同观测函数的残差对比
+
+kuraRes_MT_resanalysis.ipynb：蒙特卡罗积分方法下的不同观测函数的残差对比
+
+kuraRes_TI_resanalysis.ipynb：梯形积分方法下的不同观测函数的残差对比
+
+th_2_1.ipynb：弹簧振子残差分析
