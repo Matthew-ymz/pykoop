@@ -533,44 +533,110 @@ def compute_residual_covariance(x_pairs: np.ndarray, y_pairs: np.ndarray, operat
     return covariance
 
 
-def plot_matrix_heatmap(matrix: np.ndarray, labels: list[str], title: str, figsize: tuple[float, float] = (8.0, 6.0), center: float | None = 0.0) -> tuple[plt.Figure, plt.Axes]:
-    """Plot a square matrix with ``vlag``."""
+def _sparse_ticklabels(labels: list[str], step: int | None = None, show: bool = True) -> list[str] | bool:
+    """Build sparse tick labels for large heatmaps."""
+
+    if not show:
+        return False
+    if step is None or step <= 1:
+        return labels
+    return [label if idx % step == 0 else '' for idx, label in enumerate(labels)]
+
+
+def plot_matrix_heatmap(
+    matrix: np.ndarray,
+    labels: list[str],
+    title: str,
+    figsize: tuple[float, float] = (8.0, 6.0),
+    center: float | None = 0.0,
+    label_step: int | None = None,
+    show_ticklabels: bool = True,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot a square matrix with ``vlag`` and optional sparse labels."""
 
     fig, ax = plt.subplots(figsize=figsize)
-    sns.heatmap(matrix, cmap=V_LAG, center=center, xticklabels=labels, yticklabels=labels, ax=ax)
+    ticklabels = _sparse_ticklabels(labels, step=label_step, show=show_ticklabels)
+    sns.heatmap(matrix, cmap=V_LAG, center=center, xticklabels=ticklabels, yticklabels=ticklabels, ax=ax)
     ax.set_title(title)
-    ax.tick_params(axis='x', rotation=90)
-    ax.tick_params(axis='y', rotation=0)
+    ax.tick_params(axis='x', rotation=90, labelsize=7)
+    ax.tick_params(axis='y', rotation=0, labelsize=7)
     fig.tight_layout()
     return fig, ax
 
 
-def plot_rectangular_heatmap(matrix: np.ndarray, row_labels: list[str], column_labels: list[str], title: str, figsize: tuple[float, float] = (10.0, 6.0), center: float | None = 0.0) -> tuple[plt.Figure, plt.Axes]:
-    """Plot a rectangular matrix with ``vlag``."""
+def plot_rectangular_heatmap(
+    matrix: np.ndarray,
+    row_labels: list[str],
+    column_labels: list[str],
+    title: str,
+    figsize: tuple[float, float] = (10.0, 6.0),
+    center: float | None = 0.0,
+    row_label_step: int | None = None,
+    column_label_step: int | None = None,
+    show_row_labels: bool = True,
+    show_column_labels: bool = True,
+) -> tuple[plt.Figure, plt.Axes]:
+    """Plot a rectangular matrix with ``vlag`` and optional sparse labels."""
 
     fig, ax = plt.subplots(figsize=figsize)
-    sns.heatmap(matrix, cmap=V_LAG, center=center, xticklabels=column_labels, yticklabels=row_labels, ax=ax)
+    yticklabels = _sparse_ticklabels(row_labels, step=row_label_step, show=show_row_labels)
+    xticklabels = _sparse_ticklabels(column_labels, step=column_label_step, show=show_column_labels)
+    sns.heatmap(matrix, cmap=V_LAG, center=center, xticklabels=xticklabels, yticklabels=yticklabels, ax=ax)
     ax.set_title(title)
-    ax.tick_params(axis='x', rotation=0)
-    ax.tick_params(axis='y', rotation=0)
+    ax.tick_params(axis='x', rotation=0, labelsize=7)
+    ax.tick_params(axis='y', rotation=0, labelsize=7)
     fig.tight_layout()
     return fig, ax
 
 
-def plot_singular_value_comparison(s_raw: np.ndarray, s_model: np.ndarray, s_empirical: np.ndarray) -> tuple[plt.Figure, plt.Axes]:
+def plot_singular_value_comparison(
+    s_raw: np.ndarray,
+    s_model: np.ndarray,
+    s_empirical: np.ndarray,
+    top_n: int | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """Plot the three singular-value curves on a single panel."""
 
+    if top_n is not None:
+        s_raw = s_raw[:top_n]
+        s_model = s_model[:top_n]
+        s_empirical = s_empirical[:top_n]
     fig, ax = plt.subplots(figsize=(8.0, 4.5))
     idx = np.arange(1, len(s_empirical) + 1)
-    ax.plot(idx, s_raw, 'o--', label='data-fitted step operator')
-    ax.plot(idx, s_model, 's--', label='model + correct whitening')
-    ax.plot(idx, s_empirical, 'o-', linewidth=2.4, label='empirical whitened Koopman')
+    ax.plot(idx, s_raw, linestyle='--', marker='^', label='data-fitted step operator', markersize=3, linewidth=1.2, alpha=0.9)
+    ax.plot(idx, s_model, linestyle='--', marker='|', label='model + correct whitening', markersize=10, linewidth=1.4, alpha=0.95)
+    ax.plot(idx, s_empirical, linestyle='-', marker='o', linewidth=2.0, label='empirical whitened Koopman', markersize=3, alpha=0.85)
     ax.axhline(1.0, color='gray', linestyle=':', linewidth=1)
     ax.grid(True, axis='y', alpha=0.3)
     ax.set_xlabel('singular index')
     ax.set_ylabel('singular value')
-    ax.set_title('singular value comparison')
+    ax.set_title('singular value comparison' if top_n is None else f'singular value comparison (top {top_n})')
     ax.legend()
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_positive_contributions(contributions: list[float] | np.ndarray) -> tuple[plt.Figure, plt.Axes]:
+    """Plot positive contributions in the singular spectrum.
+
+    Parameters
+    ----------
+    contributions:
+        Sequence returned by ``get_positive_contributions``.
+
+    Returns
+    -------
+    tuple[plt.Figure, plt.Axes]
+        Figure and axis for the bar plot.
+    """
+
+    values = np.asarray(contributions, dtype=float)
+    fig, ax = plt.subplots(figsize=(10.0, 4.5))
+    ax.bar(np.arange(1, len(values) + 1), values, color='#4C72B0', alpha=0.85)
+    ax.set_xlabel('dimension')
+    ax.set_ylabel('positive contribution')
+    ax.set_title('positive contributions in singular spectrum')
+    ax.grid(True, axis='y', alpha=0.25)
     fig.tight_layout()
     return fig, ax
 
@@ -711,8 +777,10 @@ def save_workflow_results(workflow: dict[str, Any], output_dir: Path | str | Non
     artifacts['macro_dynamics_matrix'] = str(output_dir / 'macro_dynamics_matrix.csv')
 
     pd.DataFrame({'index': np.arange(1, workflow['singular_values'].shape[0] + 1), 'singular_value': workflow['singular_values']}).to_csv(output_dir / 'singular_values.csv', index=False)
+    pd.DataFrame({'dimension': np.arange(1, len(workflow['positive_contributions']) + 1), 'positive_contribution': workflow['positive_contributions']}).to_csv(output_dir / 'positive_contributions.csv', index=False)
     workflow['summary'].to_csv(output_dir / 'summary_metrics.csv', index=False)
     artifacts['singular_values'] = str(output_dir / 'singular_values.csv')
+    artifacts['positive_contributions'] = str(output_dir / 'positive_contributions.csv')
     artifacts['summary_metrics'] = str(output_dir / 'summary_metrics.csv')
 
     (output_dir / 'equations.json').write_text(json.dumps({'coarse_equations': workflow['coarse_equations'], 'macro_equations': workflow['macro_equations']}, indent=2, ensure_ascii=False), encoding='utf-8')
@@ -736,25 +804,25 @@ def save_workflow_results(workflow: dict[str, Any], output_dir: Path | str | Non
         'ce_score_rank_sum': workflow['ce_score'],
         'ce_total_from_kbar': workflow['ce_total_from_kbar'],
         'closed_form_ce': workflow['closed_form_ce'],
+        'positive_contributions': list(np.asarray(workflow['positive_contributions'], dtype=float)),
     }
     (output_dir / 'metadata.json').write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding='utf-8')
     artifacts['metadata'] = str(output_dir / 'metadata.json')
 
-    square_preview = min(40, len(workflow['feature_names']))
-    row_preview = min(60, len(workflow['feature_names']))
-
     figures = {
         'micro_analysis_combo.png': plot_neuron_analysis_combo(simulation)[0],
-        'C00.png': plot_matrix_heatmap(koopman['C00'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'C00 covariance (preview)')[0],
-        'C01.png': plot_matrix_heatmap(koopman['C01'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'C01 covariance (preview)')[0],
-        'C11.png': plot_matrix_heatmap(koopman['C11'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'C11 covariance (preview)')[0],
-        'K_matrix.png': plot_matrix_heatmap(workflow['operator_matrix'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'Data-fitted step operator (preview)')[0],
-        'model_operator_with_correct_whitening.png': plot_matrix_heatmap(workflow['model_whitened_matrix'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'Model operator with correct whitening (preview)')[0],
-        'Kbar_matrix.png': plot_matrix_heatmap(workflow['whitened_matrix'][:square_preview, :square_preview], workflow['feature_names'][:square_preview], 'Empirical whitened Koopman (preview)')[0],
-        'left_singular_vectors.png': plot_rectangular_heatmap(workflow['singular_vectors_left'][:row_preview, : workflow['rank']], workflow['feature_names'][:row_preview], workflow['macro_names'], 'Left singular vectors (truncated, preview)')[0],
-        'coarse_graining_matrix.png': plot_rectangular_heatmap(workflow['coarse_matrix'][:row_preview], workflow['feature_names'][:row_preview], workflow['macro_names'], 'Coarse-graining matrix (preview)')[0],
+        'C00.png': plot_matrix_heatmap(koopman['C00'], workflow['feature_names'], 'C00 covariance', figsize=(11, 10), label_step=100)[0],
+        'C01.png': plot_matrix_heatmap(koopman['C01'], workflow['feature_names'], 'C01 covariance', figsize=(11, 10), label_step=100)[0],
+        'C11.png': plot_matrix_heatmap(koopman['C11'], workflow['feature_names'], 'C11 covariance', figsize=(11, 10), label_step=100)[0],
+        'K_matrix.png': plot_matrix_heatmap(workflow['operator_matrix'], workflow['feature_names'], 'Data-fitted step operator', figsize=(11, 10), label_step=100)[0],
+        'model_operator_with_correct_whitening.png': plot_matrix_heatmap(workflow['model_whitened_matrix'], workflow['feature_names'], 'Model operator with correct whitening', figsize=(11, 10), label_step=100)[0],
+        'Kbar_matrix.png': plot_matrix_heatmap(workflow['whitened_matrix'], workflow['feature_names'], 'Empirical whitened Koopman', figsize=(11, 10), label_step=100)[0],
+        'left_singular_vectors.png': plot_rectangular_heatmap(workflow['singular_vectors_left'][:, : workflow['rank']], workflow['feature_names'], workflow['macro_names'], 'Left singular vectors (full)', figsize=(7, 12), show_row_labels=False)[0],
+        'coarse_graining_matrix.png': plot_rectangular_heatmap(workflow['coarse_matrix'], workflow['feature_names'], workflow['macro_names'], 'Coarse-graining matrix', figsize=(7, 12), show_row_labels=False)[0],
         'macro_dynamics_matrix.png': plot_rectangular_heatmap(workflow['macro_operator'], workflow['macro_names'], workflow['macro_names'], 'Macro dynamics matrix')[0],
         'singular_values.png': plot_singular_value_comparison(workflow['raw_operator_singular_values'], workflow['model_whitened_singular_values'], workflow['singular_values'])[0],
+        'singular_values_top15.png': plot_singular_value_comparison(workflow['raw_operator_singular_values'], workflow['model_whitened_singular_values'], workflow['singular_values'], top_n=15)[0],
+        'positive_contributions.png': plot_positive_contributions(workflow['positive_contributions'])[0],
         'macro_time_series.png': plot_macro_series(workflow['macro_series'], workflow['macro_names'])[0],
         'micro_macro_comparison.png': plot_micro_macro_comparison(
             workflow['state_matrix'],
@@ -792,6 +860,7 @@ __all__ = [
     'plot_neuron_analysis_combo',
     'plot_rectangular_heatmap',
     'plot_singular_value_comparison',
+    'plot_positive_contributions',
     'save_workflow_results',
     'set_plot_style',
     'whiten_operator_matrix',

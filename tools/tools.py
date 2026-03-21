@@ -1336,3 +1336,189 @@ def fit_data_koopman_operator(
     result["K_bar"] = np.real_if_close(K_bar_direct)
     result["K_bar_from_A"] = whitening["A_bar"]
     return result
+
+
+# 初始化 notebook/实验过程中统一使用的结果容器，便于分块保存中间结果。
+def init_artifacts(config):
+    return {
+        "config": dict(config),
+        "raw": {},
+        "prep": {},
+        "obs": {},
+        "cov": {},
+        "koopman": {},
+        "spectral": {},
+        "metrics": {},
+        "macro": {},
+        "summary": {},
+    }
+
+
+def _log_pdet_psd(matrix, eps=1e-10):
+    matrix_sym = 0.5 * (matrix + matrix.T)
+    evals = np.linalg.eigvalsh(matrix_sym)
+    positive = evals[evals > eps]
+    if positive.size == 0:
+        return float("-inf")
+    return float(np.sum(np.log(positive)))
+
+
+# 从双边白化矩阵 K_bar 统一计算奇异值分解、D_K、N_K 以及主总分 G_alpha^K。
+def analyze_kbar_metrics(K_bar, alpha=1.0, eps=1e-10):
+    K_bar = np.real_if_close(np.asarray(K_bar, dtype=float))
+
+    # 1. 奇异值分解：主谱结构、左右奇异向量、有效维数。
+    U, singular_values, Vt = np.linalg.svd(K_bar, full_matrices=False)
+    effective_rank = int(np.sum(singular_values > eps))
+    rho2 = np.clip(singular_values**2, eps, 1.0 - eps)
+
+    # 2. 未来侧残差与确定性算子 D_K。
+    residual_future = np.eye(K_bar.shape[1]) - K_bar.T @ K_bar
+    residual_future = 0.5 * (residual_future + residual_future.T)
+    D_K = np.linalg.pinv(residual_future, rcond=eps)
+    D_K = 0.5 * (D_K + D_K.T)
+
+    # 3. 当前侧增强项与非简并性算子 N_K。
+    N_K = K_bar @ D_K @ K_bar.T
+    N_K = 0.5 * (N_K + N_K.T)
+
+    # 4. 单通道得分与总分 G_alpha^K。
+    coeff_n = 0.5 - alpha / 4.0
+    coeff_d = alpha / 4.0
+    channel_scores = (
+        coeff_n * np.log(rho2 / (1.0 - rho2))
+        + coeff_d * np.log(1.0 / (1.0 - rho2))
+    )
+    log_pdet_D_K = _log_pdet_psd(D_K, eps=eps)
+    log_pdet_N_K = _log_pdet_psd(N_K, eps=eps)
+    G_alpha_K = coeff_n * log_pdet_N_K + coeff_d * log_pdet_D_K
+
+    return {
+        "U": np.real_if_close(U),
+        "S": np.real_if_close(singular_values),
+        "Vt": np.real_if_close(Vt),
+        "effective_rank": effective_rank,
+        "rho2": np.real_if_close(rho2),
+        "residual_future": np.real_if_close(residual_future),
+        "D_K": np.real_if_close(D_K),
+        "N_K": np.real_if_close(N_K),
+        "channel_scores": np.real_if_close(channel_scores),
+        "log_pdet_D_K": float(log_pdet_D_K),
+        "log_pdet_N_K": float(log_pdet_N_K),
+        "G_alpha_K": float(G_alpha_K),
+        "sigma_max": float(np.max(singular_values)) if singular_values.size else 0.0,
+    }
+
+
+# 根据 K_bar 的前 r 个左奇异向量构造宏观变量与粗粒化系数，并可选构造未来侧宏观变量。
+def build_macro_from_kbar(
+    U,
+    S,
+    Vt,
+    C00_inv_sqrt,
+    X,
+    r,
+    feature_names=None,
+    Y=None,
+    C11_inv_sqrt=None,
+    center=False,
+):
+    U = np.asarray(U, dtype=float)
+    S = np.asarray(S, dtype=float)
+    Vt = np.asarray(Vt, dtype=float)
+    C00_inv_sqrt = np.asarray(C00_inv_sqrt, dtype=float)
+    X = np.asarray(X, dtype=float)
+
+    if r < 1:
+        raise ValueError(f"r 必须为正整数，得到 {r}")
+    if r > U.shape[1]:
+        raise ValueError(f"r={r} 超过左奇异向量列数 {U.shape[1]}")
+
+    X_work = X - np.mean(X, axis=0, keepdims=True) if center else X
+    U_r = U[:, :r]
+    V_r = Vt.T[:, :r]
+
+    # 当前侧白化变量 xi_t 与宏观变量 z_t。
+    xi = X_work @ C00_inv_sqrt
+    z_current = xi @ U_r
+
+    # 粗粒化函数在原观测坐标中的系数。
+    coarse_grain_matrix = C00_inv_sqrt @ U_r
+
+    dominant_features = []
+    if feature_names is not None:
+        feature_names = list(feature_names)
+        for component_idx in range(r):
+            weights = np.abs(coarse_grain_matrix[:, component_idx])
+            order = np.argsort(-weights)
+            top_items = [
+                {
+                    "feature": feature_names[idx],
+                    "weight": float(coarse_grain_matrix[idx, component_idx]),
+                    "abs_weight": float(weights[idx]),
+                }
+                for idx in order[: min(5, len(order))]
+            ]
+            dominant_features.append(top_items)
+
+    macro_future = None
+    eta = None
+    if Y is not None and C11_inv_sqrt is not None:
+        Y = np.asarray(Y, dtype=float)
+        C11_inv_sqrt = np.asarray(C11_inv_sqrt, dtype=float)
+        Y_work = Y - np.mean(Y, axis=0, keepdims=True) if center else Y
+        eta = Y_work @ C11_inv_sqrt
+        macro_future = eta @ V_r
+
+    return {
+        "r": int(r),
+        "U_r": np.real_if_close(U_r),
+        "V_r": np.real_if_close(V_r),
+        "singular_values_r": np.real_if_close(S[:r]),
+        "xi": np.real_if_close(xi),
+        "z_current": np.real_if_close(z_current),
+        "eta": np.real_if_close(eta) if eta is not None else None,
+        "z_future": np.real_if_close(macro_future) if macro_future is not None else None,
+        "coarse_grain_matrix": np.real_if_close(coarse_grain_matrix),
+        "dominant_features": dominant_features,
+    }
+
+
+def _format_summary_value(value):
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, tuple):
+        return str(tuple(value))
+    if isinstance(value, list):
+        return np.array2string(np.asarray(value), precision=4, separator=", ")
+    if isinstance(value, np.ndarray):
+        if value.ndim == 0:
+            return value.item()
+        return np.array2string(value, precision=4, separator=", ")
+    if isinstance(value, pd.DataFrame):
+        return value
+    return str(value)
+
+
+# 统一打印最终实验摘要，既支持分段字典，也支持扁平字典。
+def print_summary(summary_dict):
+    if not isinstance(summary_dict, dict):
+        raise TypeError("summary_dict 必须是 dict")
+
+    print("=" * 88)
+    print("Summary")
+    print("=" * 88)
+
+    for key, value in summary_dict.items():
+        if isinstance(value, dict):
+            print(f"\n[{key}]")
+            rows = [{"item": sub_key, "value": _format_summary_value(sub_value)} for sub_key, sub_value in value.items()]
+            section_df = pd.DataFrame(rows)
+            print(section_df.to_string(index=False))
+        elif isinstance(value, pd.DataFrame):
+            print(f"\n[{key}]")
+            print(value.to_string(index=False))
+        else:
+            print(f"{key}: {_format_summary_value(value)}")
+
+    print("=" * 88)
