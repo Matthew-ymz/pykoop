@@ -1422,6 +1422,7 @@ def build_macro_from_kbar(
     Y=None,
     C11_inv_sqrt=None,
     center=False,
+    rr=None,
 ):
     U = np.asarray(U, dtype=float)
     S = np.asarray(S, dtype=float)
@@ -1436,6 +1437,9 @@ def build_macro_from_kbar(
 
     X_work = X - np.mean(X, axis=0, keepdims=True) if center else X
     U_r = U[:, :r]
+    if rr is not None:
+        start, end = rr
+        U_r = U[:, start:end]
     V_r = Vt.T[:, :r]
 
     # 当前侧白化变量 xi_t 与宏观变量 z_t。
@@ -1522,3 +1526,1120 @@ def print_summary(summary_dict):
             print(f"{key}: {_format_summary_value(value)}")
 
     print("=" * 88)
+
+
+def generate_two_population_neuron_data(
+    n_a=400, n_b=400,              # 两个群体的神经元数量
+    alpha_a=4.6,                 # α群体的α参数（可激发性）
+    alpha_b=4.6,                 # β群体的α参数
+    sigma_a=0.225,                 # α群体的σ参数（异质性）
+    sigma_b=0.225,                 # β群体的σ参数
+    mu=0.001,                    # 慢变参数（局部动力学）
+    gamma=0.08,                   # 群体内耦合强度（μ）
+    epsilon=0.04,                # 群体间耦合强度（ε）
+    T=10000,                     # 总模拟步数
+    transients=1000,             # 舍弃的暂态步数
+    x0_a=-1, x0_b=-0.5,          # a/b群体x初始值（None则该群体独立随机）
+    y0_a=-3.5, y0_b=-3, 
+    seed=42                      # 随机种子
+):
+    """
+    生成两个群体神经元数据，基于平均场耦合动力学。
+    
+    参数:
+        n_a, n_b: 两个群体的神经元数量
+        alpha_a, alpha_b: 两个群体的可激发性参数
+        sigma_a, sigma_b: 两个群体的异质性参数
+        mu: 慢变参数（局部动力学）
+        gamma: 群体内耦合强度（对应图中的μ）
+        epsilon: 群体间耦合强度（对应图中的ε）
+        T: 总模拟步数
+        transients: 舍弃的暂态步数
+        seed: 随机种子
+        
+    返回:
+        dict: 包含所有数据的字典
+    """
+    # 设置随机种子
+    np.random.seed(seed)
+    
+    # 总神经元数
+    N = n_a + n_b
+    
+    # 处理参数：如果是标量，扩展为列表
+    if isinstance(alpha_a, (int, float)):
+        alpha_a = np.full(n_a, alpha_a)
+    else:
+        alpha_a = np.array(alpha_a)
+        
+    if isinstance(alpha_b, (int, float)):
+        alpha_b = np.full(n_b, alpha_b)
+    else:
+        alpha_b = np.array(alpha_b)
+    
+    if isinstance(sigma_a, (int, float)):
+        sigma_a = np.full(n_a, sigma_a)
+    else:
+        sigma_a = np.array(sigma_a)
+        
+    if isinstance(sigma_b, (int, float)):
+        sigma_b = np.full(n_b, sigma_b)
+    else:
+        sigma_b = np.array(sigma_b)
+    # 合并所有参数
+    alpha_all = np.concatenate([alpha_a, alpha_b])
+    sigma_all = np.concatenate([sigma_a, sigma_b])
+            
+    # 初始化数组
+    x_series = np.zeros((N, T))
+    y_series = np.zeros((N, T))
+     
+    if x0_a is None:
+        # None → a群体每个神经元独立随机
+        x_series[:n_a, 0] = np.random.uniform(-1.5, -0.5, n_a)
+        x0_a_record = "随机值（每个神经元独立）"
+    else:
+        # 传值 → a群体所有神经元共用该值
+        x_series[:n_a, 0] = x0_a
+        x0_a_record = x0_a
+    
+    if x0_b is None:
+        # None → b群体每个神经元独立随机
+        x_series[n_a:, 0] = np.random.uniform(-1.5, -0.5, n_b)
+        x0_b_record = "随机值（每个神经元独立）"
+    else:
+        # 传值 → b群体所有神经元共用该值
+        x_series[n_a:, 0] = x0_b
+        x0_b_record = x0_b
+    
+    # 处理a群体y初始值
+    if y0_a is None:
+        y_series[:n_a, 0] = np.random.uniform(-4, -3, n_a)
+        y0_a_record = "随机值（每个神经元独立）"
+    else:
+        y_series[:n_a, 0] = y0_a
+        y0_a_record = y0_a
+    
+    # 处理b群体y初始值
+    if y0_b is None:
+        y_series[n_a:, 0] = np.random.uniform(-4, -3, n_b)
+        y0_b_record = "随机值（每个神经元独立）"
+    else:
+        y_series[n_a:, 0] = y0_b
+        y0_b_record = y0_b
+    
+    # 定义分段函数 f (局部动力学)
+    def f(x_val, y_val, alpha):
+        """Chialvo神经元模型的非线性函数"""
+        if x_val <= 0:
+            return alpha / (1 - x_val) + y_val
+        elif 0 < x_val < alpha + y_val:
+            return alpha + y_val
+        else:
+            return -1
+    
+    # 定义函数 g (慢变量动力学)
+    def g(x_val, y_val, mu, sigma):
+        """慢变量的更新函数"""
+        return y_val - mu * (x_val + 1) + mu * sigma
+    
+    # 模拟迭代
+    for t in range(T-1):
+        # 计算两个群体的平均场
+        # a群体的平均场
+        Xbar_a = np.mean(x_series[:n_a, t])
+        # b群体的平均场
+        Xbar_b = np.mean(x_series[n_a:, t])
+        
+        # 更新a群体的神经元
+        for i in range(n_a):
+            # 局部动力学部分
+            local_part = f(x_series[i, t], y_series[i, t], alpha_all[i])
+            
+            # 根据公式: x_{t+1} = (1-γ)f(...) + γXbar_a + εXbar_b
+            x_series[i, t+1] = (1 - gamma) * local_part + gamma * Xbar_a + epsilon * Xbar_b
+            
+            # 根据公式: y_{t+1} = g(x_t, y_t)
+            y_series[i, t+1] = g(x_series[i, t], y_series[i, t], mu, sigma_all[i])
+        
+        # 更新b群体的神经元
+        for j in range(n_b):
+            idx = n_a + j  # 在总数组中的索引
+            
+            # 局部动力学部分
+            local_part = f(x_series[idx, t], y_series[idx, t], alpha_all[idx])
+            
+            # 根据公式: x_{t+1} = (1-γ)f(...) + γXbar_b + εXbar_a
+            x_series[idx, t+1] = (1 - gamma) * local_part + gamma * Xbar_b + epsilon * Xbar_a
+            
+            # 根据公式: y_{t+1} = g(x_t, y_t)
+            y_series[idx, t+1] = g(x_series[idx, t], y_series[idx, t], mu, sigma_all[idx])
+        
+    # 计算同步指标
+    def compute_instantaneous_std(x_data, mean_field):
+        N_neurons = x_data.shape[0]
+        T_steps = x_data.shape[1]
+        r_t = np.zeros(T_steps)
+        
+        for t in range(T_steps):
+            # 计算每个时刻的标准差
+            r_t[t] = np.sqrt(np.mean((x_data[:, t] - mean_field[t])**2))
+        
+        return r_t
+    
+    # 计算平均场时间序列
+    Xbar_a = np.zeros(T)
+    Xbar_b = np.zeros(T)
+    
+    for t in range(T):
+        Xbar_a[t] = np.mean(x_series[:n_a, t])
+        Xbar_b[t] = np.mean(x_series[n_a:, t])
+    Xbar_a_transient = Xbar_a[transients:]
+    Xbar_b_transient = Xbar_b[transients:]
+    # 计算瞬时标准差
+    r_a_t = compute_instantaneous_std(x_series[:n_a, :], Xbar_a)
+    r_b_t = compute_instantaneous_std(x_series[n_a:, :], Xbar_b)
+    r_a_t_transient = r_a_t[transients:]
+    r_b_t_transient = r_b_t[transients:]
+    
+    Xbar_all = np.zeros(T)
+    for t in range(T):
+        Xbar_all[t] = np.mean(x_series[:, t])
+        
+    r_t = compute_instantaneous_std(x_series, Xbar_all)
+    r_t_transient = r_t[transients:]
+    
+    # 计算时间平均
+    T_effective = T - transients
+    R_a = np.mean(r_a_t_transient) 
+    R_b = np.mean(r_b_t_transient) 
+    R_t = np.mean(r_t_transient) 
+    R_delta = np.mean(np.abs(Xbar_a[transients:] - Xbar_b[transients:]))  
+    
+    # 判断同步状态 (基于图片中的定义)
+    def determine_sync_state(R_a, R_b, R_delta, threshold=1e-7):
+        sync_a = R_a < threshold
+        sync_b = R_b < threshold
+        sync_ab = R_delta < threshold
+        
+        if sync_a and sync_b and sync_ab:
+            return "Complete Synchronization 完全同步(CS)"
+        elif sync_a and sync_b and not sync_ab:
+            return "Generalized Synchronization 广义同步 (GS)"
+        elif (sync_a and not sync_b) or (not sync_a and sync_b):
+            return "Chimera State 奇美拉态(Q)"
+        elif not sync_a and not sync_b:
+            return "Desynchronization 去同步化(D)"
+        else:
+            return "Unknown State 未知"
+    
+    sync_state = determine_sync_state(R_a, R_b, R_delta)
+    
+    # 准备参数信息
+    params = {
+        '神经元总数': N,
+        'a群体神经元数': n_a,
+        'b群体神经元数': n_b,
+        'a群体α参数': alpha_a[0] if isinstance(alpha_a, np.ndarray) and len(np.unique(alpha_a)) == 1 else f"列表({len(alpha_a)}个)",
+        'b群体α参数': alpha_b[0] if isinstance(alpha_b, np.ndarray) and len(np.unique(alpha_b)) == 1 else f"列表({len(alpha_b)}个)",
+        'a群体σ参数': sigma_a[0] if isinstance(sigma_a, np.ndarray) and len(np.unique(sigma_a)) == 1 else f"列表({len(sigma_a)}个)",
+        'b群体σ参数': sigma_b[0] if isinstance(sigma_b, np.ndarray) and len(np.unique(sigma_b)) == 1 else f"列表({len(sigma_b)}个)",
+        '慢变参数μ': mu,
+        '群体内耦合强度γ': gamma,
+        '群体间耦合强度ε': epsilon,
+        '总步数': T,
+        '舍弃暂态': transients,
+        '有效数据长度': T_effective,
+        '随机种子': seed
+    }
+    
+    # 动力学特征
+    dynamics_stats = {
+        '⟨σa⟩ (R_a)': R_a,
+        '⟨σb⟩ (R_b)': R_b,
+        '⟨σt⟩ (R_t)': R_t,
+        '⟨δ⟩ (R_delta)': R_delta,
+        '同步状态': sync_state,
+        'a群体同步': R_a < 1e-7,
+        'b群体同步': R_b < 1e-7,
+        'Rt群体同步': R_t < 1e-7,
+        '群体间同步': R_delta < 1e-7,
+        'r_a_t': r_a_t,
+        'r_b_t': r_b_t,
+        'r_t': r_t
+    }
+    # 准备返回数据
+    data = {
+        'params': {**params, **dynamics_stats},
+        '群体信息': {
+            'a群体神经元数': n_a,
+            'b群体神经元数': n_b,
+            'a群体索引': list(range(n_a)),
+            'b群体索引': list(range(n_a, n_a + n_b)),
+            'a群体α参数': alpha_a,
+            'b群体α参数': alpha_b,
+            'a群体σ参数': sigma_a,
+            'b群体σ参数': sigma_b
+        },
+        '时间序列': {
+            't': np.arange(T_effective),
+            'Xbar_a': Xbar_a,  # a群体平均场
+            'Xbar_b': Xbar_b,  # b群体平均场
+            'Xbar_a_transient': Xbar_a_transient,  # a群体平均场
+            'Xbar_b_transient': Xbar_b_transient,  # b群体平均场
+            'r_a_t': r_a_t,   # a群体瞬时标准差
+            'r_b_t': r_b_t,   # b群体瞬时标准差
+            'r_t': r_t,   # 全部瞬时标准差
+            'r_a_t_transient': r_a_t_transient,   # a群体瞬时标准差
+            'r_b_t_transient': r_b_t_transient,   # b群体瞬时标准差
+            'r_t_transient': r_t_transient   # 全部瞬时标准差
+        },
+        '同步指标': {
+            'R_a': R_a,      # ⟨σα⟩的时间平均
+            'R_b': R_b,      # ⟨σβ⟩的时间平均
+            'R_t': R_t,      
+            'R_delta': R_delta,  # ⟨δ⟩的时间平均
+            'sync_state': sync_state
+        }
+    }
+    
+    # 添加每个神经元的完整时间序列
+    for i in range(n_a):
+        data[f'神经元_a_{i+1:03d}'] = {
+            'x_transient': x_series[i, transients:],
+            'y_transient': y_series[i, transients:],
+            'x': x_series[i],
+            'y': y_series[i],
+            '群体': 'a',
+            'α参数': alpha_a[i] if isinstance(alpha_a, np.ndarray) else alpha_a,
+            'σ参数': sigma_a[i] if isinstance(sigma_a, np.ndarray) else sigma_a
+        }
+    
+    for j in range(n_b):
+        idx = n_a + j
+        data[f'神经元_b_{j+1:03d}'] = {
+            'x_transient': x_series[idx, transients:],
+            'y_transient': y_series[idx, transients:],
+            'x': x_series[idx],
+            'y': y_series[idx],
+            '群体': 'b',
+            'α参数': alpha_b[j] if isinstance(alpha_b, np.ndarray) else alpha_b,
+            'σ参数': sigma_b[j] if isinstance(sigma_b, np.ndarray) else sigma_b
+        }
+    
+    return data
+
+def plot_neuron_analysis_combo(data, figsize=(20, 8), time_window=None, 
+                               vmin=None, vmax=None, cmap='viridis'):
+    """
+    绘制神经元分析组合图：左边热力图，右边瞬时标准差时间序列
+    
+    参数:
+        data: generate_two_population_neuron_data函数返回的数据字典
+        figsize: 图形大小
+        time_window: 时间窗口
+        vmin, vmax: 颜色映射的最小值和最大值
+        cmap: 颜色映射
+        show_transient: 是否显示暂态部分
+    """
+    # 从数据中提取信息
+    params = data['params']
+    group_info = data['群体信息']
+    sync_info = data['同步指标']
+    time_series = data['时间序列']
+    
+    n_a = group_info['a群体神经元数']
+    n_b = group_info['b群体神经元数']
+    N = n_a + n_b
+    T_total = params.get('总步数', 10000)
+    transients = params.get('舍弃暂态', 1000)
+    
+    # 创建图形
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
+    
+    # ========== 左图：热力图 ==========
+    T_effective = T_total - transients
+    # 提取所有神经元的x值
+    x_data = np.zeros((N, T_effective))
+    
+    # 提取a群体神经元的x值
+    for i in range(n_a):
+        neuron_key = f'神经元_a_{i+1:03d}'
+        x_data[i, :] = data[neuron_key]['x_transient']
+    
+    # 提取b群体神经元的x值
+    for j in range(n_b):
+        neuron_key = f'神经元_b_{j+1:03d}'
+        idx = n_a + j
+        x_data[idx, :] = data[neuron_key]['x_transient']
+    
+    # 如果指定了时间窗口
+    if time_window is not None:
+        start_t, end_t = time_window
+        if end_t > T_effective:
+            end_t = T_effective
+        x_data = x_data[:, start_t:end_t]
+        t_display = np.arange(end_t - start_t)
+    else:
+        t_display = np.arange(T_effective)
+        start_t, end_t = 0, T_effective
+    
+    # 确定颜色映射范围
+    if vmin is None:
+        vmin = np.min(x_data)
+    if vmax is None:
+        vmax = np.max(x_data)
+    
+    # 绘制热力图
+    im = ax1.imshow(x_data, aspect='auto', cmap=cmap, 
+                   extent=[0, len(t_display), 0, N],
+                   vmin=vmin, vmax=vmax,
+                   origin='lower', interpolation='nearest')
+    
+    # 添加颜色条
+    cbar = plt.colorbar(im, ax=ax1, pad=0.01, shrink=0.8)
+    cbar.set_label('神经元状态 x 值', fontsize=12)
+    
+    # 设置坐标轴
+    ax1.set_xlabel('时间步 t', fontsize=12)
+    ax1.set_ylabel('神经元索引', fontsize=12)
+    
+    # 设置y轴刻度，只显示群体标签
+    ax1.set_yticks([n_a/2, n_a + n_b/2])
+    ax1.set_yticklabels(['群体a', '群体b'], fontsize=12)
+    
+    # 在两个群体之间添加分隔线
+    ax1.axhline(y=n_a, color='white', linestyle='--', linewidth=2, alpha=0.8)
+    
+    # 设置标题
+    sync_state = sync_info.get('sync_state', 'Unknown')
+    title1 = f'神经元群体状态热力图 (同步状态: {sync_state})'
+    if time_window is not None:
+        title1 += f' (时间窗口: {time_window[0]}-{time_window[1]})'
+    ax1.set_title(title1, fontsize=14, fontweight='bold', pad=20)
+    
+    # ========== 右图：瞬时标准差时间序列 ==========
+    # 获取瞬时标准差数据
+    r_a_t = time_series['r_a_t']
+    r_b_t = time_series['r_b_t']
+    r_t = time_series['r_t']
+    
+    t_plot = np.arange(T_total)
+    transient_line = transients
+    
+    # 绘制三条曲线
+    ax2.plot(t_plot, r_a_t, label='r_a(t)', 
+         color='blue', alpha=0.8, linewidth=1.5, linestyle=':', marker='.', markersize=5,markevery=50)  # 点线
+    ax2.plot(t_plot, r_b_t, label='r_b(t)', 
+         color='red', alpha=0.8, linewidth=1.5, linestyle=':', marker='s', markersize=2,markevery=50)  # 方框线
+    ax2.plot(t_plot, r_t, label='r(t)', 
+         color='green', alpha=0.8, linewidth=1.5, linestyle='--')  # 虚线
+    
+    ax2.axvline(x=transient_line, color='gray', linestyle='--', linewidth=2, alpha=0.7)
+    
+    # 设置坐标轴
+    ax2.set_xlabel('时间步 t', fontsize=12)
+    ax2.set_ylabel('瞬时标准差', fontsize=12)
+    ax2.set_title('瞬时标准差时间序列', fontsize=14, fontweight='bold', pad=20)
+    ax2.legend(fontsize=11)
+    ax2.set_facecolor('white')  
+    ax2.grid(False)  
+    
+    # 调整布局
+    ax1.grid(False)
+    plt.tight_layout()
+    plt.show()
+
+# Rulkov 两群体原始数据字典中提取统一的状态矩阵，支持同时保留 x 与 y 两类状态。
+def extract_state_matrix_from_rulkov_data(
+    data,
+    include_x=True,
+    include_y=True,
+    use_transient=True,
+):
+    if not include_x and not include_y:
+        raise ValueError("include_x 和 include_y 不能同时为 False")
+    if "群体信息" not in data:
+        raise KeyError("输入数据缺少 '群体信息' 键")
+
+    group_info = data["群体信息"]
+    n_a = int(group_info["a群体神经元数"])
+    n_b = int(group_info["b群体神经元数"])
+
+    cols = []
+    state_names = []
+    group_labels = []
+
+    time_suffix = "transient" if use_transient else ""
+    x_key = "x_transient" if use_transient else "x"
+    y_key = "y_transient" if use_transient else "y"
+
+    for idx in range(1, n_a + 1):
+        neuron_key = f"神经元_a_{idx:03d}"
+        neuron_data = data[neuron_key]
+        if include_x:
+            cols.append(np.asarray(neuron_data[x_key], dtype=float))
+            state_names.append(f"x_a{idx}")
+            group_labels.append("a")
+        if include_y:
+            cols.append(np.asarray(neuron_data[y_key], dtype=float))
+            state_names.append(f"y_a{idx}")
+            group_labels.append("a")
+
+    for idx in range(1, n_b + 1):
+        neuron_key = f"神经元_b_{idx:03d}"
+        neuron_data = data[neuron_key]
+        if include_x:
+            cols.append(np.asarray(neuron_data[x_key], dtype=float))
+            state_names.append(f"x_b{idx}")
+            group_labels.append("b")
+        if include_y:
+            cols.append(np.asarray(neuron_data[y_key], dtype=float))
+            state_names.append(f"y_b{idx}")
+            group_labels.append("b")
+
+    x_data_raw = np.column_stack(cols)
+
+    sync_metrics = {}
+    if "同步指标" in data:
+        sync_metrics = {
+            "R_a": data["同步指标"].get("R_a"),
+            "R_b": data["同步指标"].get("R_b"),
+            "R_t": data["同步指标"].get("R_t"),
+            "R_delta": data["同步指标"].get("R_delta"),
+            "sync_state": data["同步指标"].get("sync_state"),
+        }
+
+    time_data = None
+    if "时间序列" in data and "t" in data["时间序列"]:
+        time_data = np.asarray(data["时间序列"]["t"], dtype=float)
+
+    return {
+        "x_data_raw": np.asarray(x_data_raw, dtype=float),
+        "state_names": state_names,
+        "group_labels": group_labels,
+        "time_data": time_data,
+        "sync_metrics": sync_metrics,
+        "meta": {
+            "n_a": n_a,
+            "n_b": n_b,
+            "include_x": bool(include_x),
+            "include_y": bool(include_y),
+            "use_transient": bool(use_transient),
+            "time_key_suffix": time_suffix,
+        },
+    }
+
+
+# 将多种 map 状态的关键单值指标整理成统一比较表，便于最终汇总展示。
+def build_map_comparison_table(state_results):
+    if not isinstance(state_results, dict):
+        raise TypeError("state_results 必须是 dict")
+
+    rows = []
+    for state_name, result in state_results.items():
+        metrics = result.get("metrics", {})
+        sync_metrics = result.get("sync_metrics", {})
+        singular_values = np.asarray(result.get("singular_values", []), dtype=float)
+
+        row = {
+            "state": state_name,
+            "sync_state": sync_metrics.get("sync_state"),
+            "R_a": sync_metrics.get("R_a"),
+            "R_b": sync_metrics.get("R_b"),
+            "R_t": sync_metrics.get("R_t"),
+            "R_delta": sync_metrics.get("R_delta"),
+            "G_alpha_K": metrics.get("G_alpha_K"),
+            "EC": metrics.get("EC"),
+            "r": metrics.get("selected_r"),
+            "CE": metrics.get("delta_g_selected_r"),
+            "effective_rank": metrics.get("effective_rank"),
+            "sigma1": float(singular_values[0]) if singular_values.size >= 1 else np.nan,
+            "sigma2": float(singular_values[1]) if singular_values.size >= 2 else np.nan,
+            "sigma3": float(singular_values[2]) if singular_values.size >= 3 else np.nan,
+        }
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
+
+# =========================
+# Air-quality helpers
+# =========================
+
+def _infer_yrd_province_from_city(city_name):
+    """根据长三角常见地级市名称推断所属省份。"""
+    if city_name is None or (isinstance(city_name, float) and np.isnan(city_name)):
+        return None
+    city_name = str(city_name).strip()
+    mapping = {
+        "上海市": "上海市",
+        "南京市": "江苏省","无锡市": "江苏省","徐州市": "江苏省","常州市": "江苏省","苏州市": "江苏省",
+        "南通市": "江苏省","连云港市": "江苏省","淮安市": "江苏省","盐城市": "江苏省","扬州市": "江苏省",
+        "镇江市": "江苏省","泰州市": "江苏省","宿迁市": "江苏省","杭州市": "浙江省","宁波市": "浙江省",
+        "温州市": "浙江省","嘉兴市": "浙江省","湖州市": "浙江省","绍兴市": "浙江省","金华市": "浙江省",
+        "衢州市": "浙江省","舟山市": "浙江省","台州市": "浙江省",
+        "合肥市": "安徽省","芜湖市": "安徽省","马鞍山市": "安徽省","铜陵市": "安徽省","安庆市": "安徽省",
+        "滁州市": "安徽省","池州市": "安徽省","宣城市": "安徽省",
+    }
+    return mapping.get(city_name, None)
+
+
+def _read_station_meta_csv(station_meta_path):
+    """稳健读取站点元数据表，并补充 province 列。"""
+    read_errors = []
+    for encoding in ("utf-8", "utf-8-sig", "gbk", "gb18030"):
+        try:
+            station_meta = pd.read_csv(station_meta_path, encoding=encoding)
+            break
+        except Exception as exc:  # pragma: no cover - fallback path
+            read_errors.append((encoding, repr(exc)))
+    else:  # pragma: no cover - fallback path
+        raise RuntimeError(
+            f"无法读取站点元数据文件: {station_meta_path}。尝试编码失败记录: {read_errors}"
+        )
+
+    station_meta = station_meta.copy()
+    for required_col in ("station_id", "city", "lon", "lat"):
+        if required_col not in station_meta.columns:
+            raise KeyError(f"站点元数据缺少必要列: {required_col}")
+
+    station_meta["station_id"] = station_meta["station_id"].astype(str)
+    station_meta["city"] = station_meta["city"].astype(str)
+    station_meta["lon"] = pd.to_numeric(station_meta["lon"], errors="coerce")
+    station_meta["lat"] = pd.to_numeric(station_meta["lat"], errors="coerce")
+
+    if "province" not in station_meta.columns:
+        station_meta["province"] = station_meta["city"].map(_infer_yrd_province_from_city)
+
+    return station_meta
+
+
+def _open_air_dataset_robust(dataset_path, engine_preference=None):
+    """依次尝试不同引擎打开空气数据集。"""
+    import xarray as xr
+
+    tried = []
+    engines = []
+    if engine_preference is not None:
+        engines.append(engine_preference)
+    engines.extend(["h5netcdf", "netcdf4", "scipy", None])
+
+    seen = set()
+    for engine in engines:
+        if engine in seen:
+            continue
+        seen.add(engine)
+        try:
+            if engine is None:
+                return xr.open_dataset(dataset_path)
+            return xr.open_dataset(dataset_path, engine=engine)
+        except Exception as exc:  # pragma: no cover - environment dependent
+            tried.append((engine, repr(exc)))
+
+    raise RuntimeError(
+        f"无法打开空气数据文件: {dataset_path}。尝试引擎失败记录: {tried}"
+    )
+
+
+def _normalize_name_list(values):
+    if values is None:
+        return None
+    if isinstance(values, (str, bytes)):
+        return [str(values)]
+    return [str(v) for v in values]
+
+
+def load_air_data_subset(
+    dataset_path,
+    station_meta_path,
+    subset_mode="all",
+    province_names=None,
+    city_names=None,
+    station_ids=None,
+    variables=None,
+    time_slice=None,
+    engine_preference=None,
+):
+    """
+    读取空气数据并按区域/站点筛选子集。
+
+    参数
+    ----------
+    dataset_path : str or Path
+        NetCDF 数据文件路径。
+    station_meta_path : str or Path
+        站点元数据 CSV 路径。
+    subset_mode : str
+        可选: "all", "province", "provinces", "city", "cities",
+        "station", "stations", "custom"。
+    province_names, city_names, station_ids : str or list[str], optional
+        用于筛选的省、市、站点列表。
+    variables : list[str], optional
+        需要保留的变量；若为 None，则保留全部数据变量。
+    time_slice : slice or tuple or list, optional
+        时间切片。支持:
+        - slice(start, stop)
+        - (start, stop)
+        - [start, stop]
+    engine_preference : str, optional
+        指定 xarray 打开引擎优先项。
+
+    返回
+    ----------
+    result : dict
+        包含 ds_subset, station_meta_subset, selected_station_ids,
+        selected_variables, available_variables, subset_mode 等。
+    """
+    station_meta = _read_station_meta_csv(station_meta_path)
+    ds = _open_air_dataset_robust(dataset_path, engine_preference=engine_preference)
+
+    if "station" not in ds.dims:
+        raise KeyError("空气数据集中缺少 station 维度")
+
+    available_variables = list(ds.data_vars)
+    selected_variables = available_variables if variables is None else list(variables)
+    missing_variables = [var for var in selected_variables if var not in available_variables]
+    if missing_variables:
+        raise KeyError(f"所选变量在数据集中不存在: {missing_variables}")
+
+    province_names = _normalize_name_list(province_names)
+    city_names = _normalize_name_list(city_names)
+    station_ids = _normalize_name_list(station_ids)
+
+    mask = pd.Series(True, index=station_meta.index)
+    subset_mode = str(subset_mode).lower()
+
+    if subset_mode == "all":
+        pass
+    elif subset_mode == "province":
+        if not province_names or len(province_names) != 1:
+            raise ValueError("subset_mode='province' 时需要且只允许提供 1 个 province_names")
+        mask &= station_meta["province"].astype(str).isin(province_names)
+    elif subset_mode == "provinces":
+        if not province_names:
+            raise ValueError("subset_mode='provinces' 时需要提供 province_names")
+        mask &= station_meta["province"].astype(str).isin(province_names)
+    elif subset_mode == "city":
+        if not city_names or len(city_names) != 1:
+            raise ValueError("subset_mode='city' 时需要且只允许提供 1 个 city_names")
+        mask &= station_meta["city"].astype(str).isin(city_names)
+    elif subset_mode == "cities":
+        if not city_names:
+            raise ValueError("subset_mode='cities' 时需要提供 city_names")
+        mask &= station_meta["city"].astype(str).isin(city_names)
+    elif subset_mode == "station":
+        if not station_ids or len(station_ids) != 1:
+            raise ValueError("subset_mode='station' 时需要且只允许提供 1 个 station_ids")
+        mask &= station_meta["station_id"].astype(str).isin(station_ids)
+    elif subset_mode == "stations":
+        if not station_ids:
+            raise ValueError("subset_mode='stations' 时需要提供 station_ids")
+        mask &= station_meta["station_id"].astype(str).isin(station_ids)
+    elif subset_mode == "custom":
+        if province_names is not None:
+            mask &= station_meta["province"].astype(str).isin(province_names)
+        if city_names is not None:
+            mask &= station_meta["city"].astype(str).isin(city_names)
+        if station_ids is not None:
+            mask &= station_meta["station_id"].astype(str).isin(station_ids)
+    else:
+        raise ValueError(f"不支持的 subset_mode: {subset_mode}")
+
+    station_meta_subset = station_meta.loc[mask].reset_index(drop=True)
+    if station_meta_subset.empty:
+        raise ValueError("筛选后没有站点，请检查 subset_mode 与筛选参数")
+
+    selected_station_ids = station_meta_subset["station_id"].astype(str).tolist()
+
+    # 优先按 station 坐标的站点 id 对齐；若不存在则退回到顺序截取。
+    if "station" in ds.coords:
+        station_coord_values = [str(v) for v in np.asarray(ds["station"].values).tolist()]
+        station_lookup = {sid: idx for idx, sid in enumerate(station_coord_values)}
+        if all(sid in station_lookup for sid in selected_station_ids):
+            station_indices = [station_lookup[sid] for sid in selected_station_ids]
+        else:
+            if ds.dims["station"] != len(station_meta):
+                raise ValueError(
+                    "数据集 station 坐标无法与站点元数据按 station_id 对齐，且 station 数量也不一致"
+                )
+            original_lookup = {
+                sid: idx for idx, sid in enumerate(station_meta["station_id"].astype(str).tolist())
+            }
+            station_indices = [original_lookup[sid] for sid in selected_station_ids]
+    else:
+        if ds.dims["station"] != len(station_meta):
+            raise ValueError("数据集缺少 station 坐标且 station 数量与元数据不一致，无法安全对齐")
+        original_lookup = {
+            sid: idx for idx, sid in enumerate(station_meta["station_id"].astype(str).tolist())
+        }
+        station_indices = [original_lookup[sid] for sid in selected_station_ids]
+
+    ds_subset = ds.isel(station=station_indices)
+    ds_subset = ds_subset[selected_variables]
+
+    if time_slice is not None:
+        if isinstance(time_slice, slice):
+            ds_subset = ds_subset.isel(time=time_slice)
+        elif isinstance(time_slice, (tuple, list)) and len(time_slice) == 2:
+            ds_subset = ds_subset.sel(time=slice(time_slice[0], time_slice[1]))
+        else:
+            raise ValueError("time_slice 必须是 slice 或长度为 2 的 tuple/list")
+
+    return {
+        "ds_subset": ds_subset,
+        "station_meta_subset": station_meta_subset,
+        "selected_station_ids": selected_station_ids,
+        "selected_variables": selected_variables,
+        "available_variables": available_variables,
+        "subset_mode": subset_mode,
+        "dataset_path": str(dataset_path),
+        "station_meta_path": str(station_meta_path),
+        "station_indices": station_indices,
+    }
+
+
+def build_air_feature_matrix(
+    air_subset,
+    variables=None,
+    feature_name_style="station_var",
+):
+    """
+    从筛选后的空气数据构造微观状态矩阵与特征名。
+
+    参数
+    ----------
+    air_subset : dict
+        load_air_data_subset 的返回结果。
+    variables : list[str], optional
+        若提供，则只从 air_subset 中再次挑选这些变量。
+    feature_name_style : str
+        目前支持 "station_var" -> "{station_id}_{var}"。
+
+    返回
+    ----------
+    result : dict
+        包含 x_data_raw, feature_names, times, station_meta, variables,
+        variable_slices, station_ids 等。
+    """
+    if not isinstance(air_subset, dict) or "ds_subset" not in air_subset:
+        raise TypeError("air_subset 必须是 load_air_data_subset 返回的 dict")
+
+    ds_subset = air_subset["ds_subset"]
+    station_meta = air_subset["station_meta_subset"].reset_index(drop=True).copy()
+    station_ids = station_meta["station_id"].astype(str).tolist()
+
+    selected_variables = (
+        air_subset["selected_variables"] if variables is None else list(variables)
+    )
+    missing_variables = [var for var in selected_variables if var not in ds_subset.data_vars]
+    if missing_variables:
+        raise KeyError(f"所选变量在 ds_subset 中不存在: {missing_variables}")
+
+    matrices = []
+    feature_names = []
+    variable_slices = {}
+    start_idx = 0
+
+    for var in selected_variables:
+        data_array = ds_subset[var]
+        if "time" not in data_array.dims or "station" not in data_array.dims:
+            raise ValueError(f"变量 {var} 必须同时包含 time 和 station 维度")
+
+        data_2d = data_array.transpose("time", "station").values
+        data_2d = np.asarray(data_2d, dtype=float)
+        if data_2d.shape[1] != len(station_ids):
+            raise ValueError(f"变量 {var} 的 station 维与站点元数据长度不一致")
+
+        matrices.append(data_2d)
+        if feature_name_style != "station_var":
+            raise ValueError(f"不支持的 feature_name_style: {feature_name_style}")
+
+        current_names = [f"{sid}_{var}" for sid in station_ids]
+        feature_names.extend(current_names)
+        variable_slices[var] = slice(start_idx, start_idx + len(current_names))
+        start_idx += len(current_names)
+
+    x_data_raw = np.column_stack(matrices)
+    times = ds_subset["time"].values if "time" in ds_subset.coords else np.arange(x_data_raw.shape[0])
+
+    return {
+        "x_data_raw": np.asarray(x_data_raw, dtype=float),
+        "feature_names": feature_names,
+        "times": np.asarray(times),
+        "station_meta": station_meta,
+        "station_ids": station_ids,
+        "variables": selected_variables,
+        "variable_slices": variable_slices,
+        "n_stations": len(station_ids),
+        "n_features": x_data_raw.shape[1],
+    }
+
+
+def summarize_air_subset(air_subset):
+    """
+    汇总空气数据子集的基本信息，便于 notebook 中直接展示。
+
+    返回
+    ----------
+    summary : dict
+        包含 summary_df, province_counts, city_counts 等表。
+    """
+    if not isinstance(air_subset, dict) or "station_meta_subset" not in air_subset:
+        raise TypeError("air_subset 必须是 load_air_data_subset 返回的 dict")
+
+    station_meta = air_subset["station_meta_subset"].reset_index(drop=True)
+    ds_subset = air_subset["ds_subset"]
+    selected_variables = air_subset.get("selected_variables", [])
+
+    province_counts = (
+        station_meta.groupby("province", dropna=False)["station_id"]
+        .count()
+        .reset_index(name="station_count")
+        .sort_values(["station_count", "province"], ascending=[False, True])
+        .reset_index(drop=True)
+    )
+    city_counts = (
+        station_meta.groupby(["province", "city"], dropna=False)["station_id"]
+        .count()
+        .reset_index(name="station_count")
+        .sort_values(["station_count", "province", "city"], ascending=[False, True, True])
+        .reset_index(drop=True)
+    )
+
+    time_values = ds_subset["time"].values if "time" in ds_subset.coords else np.array([])
+    if time_values.size > 0:
+        time_start = str(time_values[0])
+        time_end = str(time_values[-1])
+        time_length = int(time_values.size)
+    else:
+        time_start = None
+        time_end = None
+        time_length = int(ds_subset.dims.get("time", 0))
+
+    summary_df = pd.DataFrame(
+        [
+            {
+                "subset_mode": air_subset.get("subset_mode"),
+                "station_count": int(len(station_meta)),
+                "province_count": int(station_meta["province"].nunique(dropna=True)),
+                "city_count": int(station_meta["city"].nunique(dropna=True)),
+                "variable_count": int(len(selected_variables)),
+                "variables": ", ".join(map(str, selected_variables)),
+                "time_length": time_length,
+                "time_start": time_start,
+                "time_end": time_end,
+            }
+        ]
+    )
+
+    return {
+        "summary_df": summary_df,
+        "province_counts": province_counts,
+        "city_counts": city_counts,
+        "station_meta": station_meta,
+    }
+
+
+def _coerce_map_panels(coarse_grain_coff, delay=0, title_suffix=""):
+    """
+    将输入统一解析为可绘制面板列表。
+
+    支持两类输入：
+    1. ndarray / DataFrame : 每一列对应一个面板；
+    2. list[dict] : 每个 dict 至少包含 data，可选 title/delay/title_suffix。
+    """
+    panels = []
+
+    if isinstance(coarse_grain_coff, (list, tuple)):
+        for item_idx, item in enumerate(coarse_grain_coff):
+            if isinstance(item, dict):
+                data = item.get("data")
+                if data is None:
+                    raise ValueError(f"第 {item_idx} 个面板 dict 缺少 data")
+                panel_delay = item.get("delay", delay)
+                panel_suffix = item.get("title_suffix", title_suffix)
+                panel_title = item.get("title", None)
+                panel_df = pd.DataFrame(data).reset_index(drop=True)
+                for col_idx in panel_df.columns:
+                    if panel_title is None:
+                        title = f"y{int(col_idx) + 1 if isinstance(col_idx, (int, np.integer)) else col_idx}_d{panel_delay}{panel_suffix}"
+                    else:
+                        title = str(panel_title)
+                    panels.append(
+                        {
+                            "values": np.asarray(panel_df[col_idx], dtype=float),
+                            "title": title,
+                            "delay": panel_delay,
+                        }
+                    )
+            else:
+                panel_df = pd.DataFrame(item).reset_index(drop=True)
+                for col_idx in panel_df.columns:
+                    panels.append(
+                        {
+                            "values": np.asarray(panel_df[col_idx], dtype=float),
+                            "title": f"y{int(col_idx) + 1 if isinstance(col_idx, (int, np.integer)) else col_idx}_d{delay}{title_suffix}",
+                            "delay": delay,
+                        }
+                    )
+        return panels
+
+    coff_df = pd.DataFrame(coarse_grain_coff).reset_index(drop=True)
+    for col_idx in coff_df.columns:
+        display_idx = int(col_idx) + 1 if isinstance(col_idx, (int, np.integer)) else col_idx
+        panels.append(
+            {
+                "values": np.asarray(coff_df[col_idx], dtype=float),
+                "title": f"y{display_idx}_d{delay}{title_suffix}",
+                "delay": delay,
+            }
+        )
+    return panels
+
+
+def plot_station_with_map(
+    df,
+    coarse_grain_coff,
+    delay=0,
+    title_suffix="",
+    vmax=None,
+    vmin=None,
+    ncols=None,
+    figsize=None,
+    dpi=300,
+    cmap="viridis",
+    marker_size=60,
+    edge_linewidth=0.4,
+    sort_points=True,
+    show_colorbar=True,
+    return_fig=False,
+):
+    """
+    在地图上绘制站点权重分布，支持单图与网格子图。
+
+    兼容旧接口：
+    - 仍支持传入单个 ndarray/DataFrame，并通过 delay/title_suffix 生成标题；
+    - 保留地图底图、海岸线、湖海、河流、重点边界、颜色映射等功能。
+
+    扩展能力：
+    - 若输入包含多列，则自动按网格子图排版；
+    - 所有子图共用统一的颜色范围，便于跨延迟层/跨变量比较；
+    - 默认按数值从小到大排序绘点，让较大的点盖在上层，更显眼。
+    """
+    import math
+    import matplotlib.pyplot as plt
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+
+    df = df.copy().reset_index(drop=True)
+    for required_col in ("lon", "lat"):
+        if required_col not in df.columns:
+            raise KeyError(f"地图绘制数据缺少必要列: {required_col}")
+
+    panels = _coerce_map_panels(
+        coarse_grain_coff=coarse_grain_coff,
+        delay=delay,
+        title_suffix=title_suffix,
+    )
+    if len(panels) == 0:
+        raise ValueError("没有可绘制的地图面板")
+
+    expected_len = len(df)
+    for panel in panels:
+        if len(panel["values"]) != expected_len:
+            raise ValueError(
+                f"面板 {panel['title']} 的长度 ({len(panel['values'])}) 与站点数 ({expected_len}) 不一致"
+            )
+
+    all_values = np.concatenate([panel["values"] for panel in panels]).astype(float)
+    global_vmin = float(np.nanmin(all_values)) if vmin is None else float(vmin)
+    global_vmax = float(np.nanmax(all_values)) if vmax is None else float(vmax)
+    if np.isclose(global_vmin, global_vmax):
+        global_vmax = global_vmin + 1e-12
+
+    num_panels = len(panels)
+    if ncols is None:
+        ncols = min(3, num_panels)
+    ncols = max(1, int(ncols))
+    nrows = int(math.ceil(num_panels / ncols))
+
+    if figsize is None:
+        figsize = (5.6 * ncols, 4.8 * nrows)
+
+    fig, axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=figsize,
+        dpi=dpi,
+        subplot_kw={"projection": ccrs.PlateCarree()},
+    )
+    axes = np.atleast_1d(axes).ravel()
+
+    extent = [
+        float(df["lon"].min()) - 0.3,
+        float(df["lon"].max()) + 0.3,
+        float(df["lat"].min()) - 0.3,
+        float(df["lat"].max()) + 0.3,
+    ]
+
+    scatter_ref = None
+    for ax, panel in zip(axes, panels):
+        df_plot = df.copy()
+        df_plot["value_to_plot"] = panel["values"]
+        if sort_points:
+            df_plot = df_plot.sort_values("value_to_plot")
+
+        ax.set_extent(extent, crs=ccrs.PlateCarree())
+        ax.add_feature(cfeature.LAND, facecolor="#fdfcf0")
+        ax.add_feature(cfeature.OCEAN, facecolor="#e3f2fd")
+        ax.add_feature(cfeature.COASTLINE, linewidth=1.0)
+        ax.add_feature(cfeature.LAKES, alpha=0.5)
+        ax.add_feature(cfeature.RIVERS, linewidth=0.8)
+        ax.add_feature(cfeature.BORDERS, linewidth=0.8, edgecolor="grey")
+        ax.add_feature(
+            cfeature.STATES.with_scale("10m"),
+            linestyle="--",
+            edgecolor="grey",
+            linewidth=0.7,
+        )
+
+        scatter_ref = ax.scatter(
+            df_plot["lon"],
+            df_plot["lat"],
+            c=df_plot["value_to_plot"],
+            cmap=cmap,
+            vmin=global_vmin,
+            vmax=global_vmax,
+            s=marker_size,
+            alpha=1.0,
+            edgecolors="black",
+            linewidth=edge_linewidth,
+            transform=ccrs.PlateCarree(),
+            zorder=5,
+        )
+
+        ax.set_title(str(panel["title"]), fontsize=14)
+        gl = ax.gridlines(draw_labels=True, linestyle=":", alpha=0.5)
+        gl.top_labels = False
+        gl.right_labels = False
+        gl.xlabel_style = {"size": 10}
+        gl.ylabel_style = {"size": 10}
+
+    for ax in axes[num_panels:]:
+        ax.set_visible(False)
+
+    if show_colorbar and scatter_ref is not None:
+        cbar = fig.colorbar(
+            scatter_ref,
+            ax=[ax for ax in axes[:num_panels]],
+            fraction=0.028,
+            pad=0.03,
+            shrink=0.95,
+        )
+        cbar.ax.tick_params(labelsize=10)
+
+    plt.tight_layout()
+    if return_fig:
+        return fig, axes[:num_panels]
+    plt.show()
