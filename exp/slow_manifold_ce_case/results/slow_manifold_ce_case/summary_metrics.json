@@ -1,0 +1,27 @@
+{
+  "config": {
+    "total_steps": 6000,
+    "burn_in": 1000,
+    "seed": 23,
+    "epsilon": 0.045,
+    "sigma_u": 0.085,
+    "sigma_v": 0.18,
+    "lambda_fast": 0.12,
+    "cubic_coupling": 0.3,
+    "u0": -0.8,
+    "v0_offset": 0.6,
+    "lag_steps": 1,
+    "observable_mode": "identity"
+  },
+  "observable_names": [
+    "u",
+    "v"
+  ],
+  "singular_values": [
+    0.9945994579860706,
+    0.28213774722332
+  ],
+  "micro_average_reversibility": 0.6383686026046953,
+  "macro_average_reversibility_rank1": 0.9945994579860706,
+  "reversibility_gain_rank1": 0.35623085538137533
+}

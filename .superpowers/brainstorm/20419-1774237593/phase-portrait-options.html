@@ -1,0 +1,117 @@
+<h2>哪种相图最能讲清序参量？</h2>
+<p class="subtitle">目标：让不太懂动力学的人也能一眼看出“二维微观态里，其实只有一条慢方向是真正可预测的宏观骨架”。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 慢流形主图</div>
+        <div class="mockup-body" style="height:260px; position:relative; background:
+          linear-gradient(to bottom, rgba(235,244,255,0.95), rgba(251,247,237,0.95)); overflow:hidden;">
+          <svg viewBox="0 0 320 260" style="width:100%;height:100%">
+            <defs>
+              <marker id="arrowA" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L6,3 z" fill="#446b8a"></path>
+              </marker>
+            </defs>
+            <path d="M25 190 C80 145, 115 100, 160 120 C210 145, 245 95, 295 55"
+              fill="none" stroke="#c46a2f" stroke-width="5"/>
+            <path d="M25 190 C80 145, 115 100, 160 120 C210 145, 245 95, 295 55"
+              fill="none" stroke="#f3b37c" stroke-width="14" opacity="0.22"/>
+            <path d="M45 210 L72 170" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <path d="M62 190 L85 155" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <path d="M110 150 L132 130" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <path d="M160 165 L166 132" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <path d="M205 150 L220 125" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <path d="M245 112 L262 85" stroke="#446b8a" stroke-width="2.5" marker-end="url(#arrowA)"/>
+            <ellipse cx="75" cy="168" rx="36" ry="20" fill="#7aa6c2" opacity="0.18"/>
+            <ellipse cx="248" cy="92" rx="36" ry="20" fill="#7aa6c2" opacity="0.18"/>
+            <circle cx="88" cy="160" r="4.5" fill="#19354a"/>
+            <circle cx="240" cy="92" r="4.5" fill="#19354a"/>
+            <text x="92" y="155" font-size="13" fill="#19354a">左稳态盆</text>
+            <text x="207" y="82" font-size="13" fill="#19354a">右稳态盆</text>
+            <text x="172" y="145" font-size="13" fill="#9a4f18">慢流形</text>
+            <text x="22" y="28" font-size="13" fill="#35566f">横向细节快速塌缩</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 A</h3>
+      <p>主打“所有轨线先靠拢到一条慢流形，然后沿流形慢慢移动”。序参量直接解释为沿这条曲线的位置。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 双井势 + 投影示意</div>
+        <div class="mockup-body" style="height:260px; position:relative; background:
+          linear-gradient(to bottom, rgba(247,248,252,1), rgba(251,244,235,1)); overflow:hidden;">
+          <svg viewBox="0 0 320 260" style="width:100%;height:100%">
+            <path d="M20 140 C45 138, 58 70, 93 70 C128 70, 138 188, 160 190 C182 188, 192 70, 227 70 C262 70, 275 138, 300 140"
+              fill="none" stroke="#c46a2f" stroke-width="5"/>
+            <line x1="160" y1="30" x2="160" y2="220" stroke="#4a6d85" stroke-dasharray="6 6" stroke-width="2"/>
+            <path d="M60 110 Q100 95 135 118" fill="none" stroke="#6f95ac" stroke-width="3"/>
+            <path d="M185 118 Q220 95 260 110" fill="none" stroke="#6f95ac" stroke-width="3"/>
+            <path d="M105 90 L105 145" stroke="#36556b" stroke-width="2.5"/>
+            <path d="M215 90 L215 145" stroke="#36556b" stroke-width="2.5"/>
+            <circle cx="93" cy="70" r="5" fill="#19354a"/>
+            <circle cx="227" cy="70" r="5" fill="#19354a"/>
+            <text x="53" y="52" font-size="13" fill="#19354a">左井</text>
+            <text x="233" y="52" font-size="13" fill="#19354a">右井</text>
+            <text x="167" y="42" font-size="13" fill="#36556b">序参量轴</text>
+            <text x="82" y="170" font-size="13" fill="#6f95ac">投影到 1D</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 B</h3>
+      <p>主打“双稳态”直觉。更像势阱图，强调系统最终由一个连续序参量决定自己更靠左井还是右井。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 三联图叙事</div>
+        <div class="mockup-body" style="height:260px; background:linear-gradient(to bottom, rgba(248,249,246,1), rgba(248,242,233,1)); padding:14px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; height:100%;">
+            <div style="border:1px solid #d2d8d0; background:#fff; padding:8px;">
+              <div class="label">微观相图</div>
+              <div style="height:170px; position:relative;">
+                <div style="position:absolute; inset:16px 20px 22px 20px; border-left:2px solid #68859b; border-bottom:2px solid #68859b;"></div>
+                <div style="position:absolute; left:36px; top:120px; width:110px; height:26px; border:3px solid #c46a2f; border-radius:40px; transform:rotate(-24deg);"></div>
+                <div style="position:absolute; left:110px; top:78px; width:120px; height:26px; border:3px solid #c46a2f; border-radius:40px; transform:rotate(18deg);"></div>
+              </div>
+            </div>
+            <div style="border:1px solid #d2d8d0; background:#fff; padding:8px;">
+              <div class="label">谱分离</div>
+              <div style="height:170px; display:flex; align-items:flex-end; gap:24px; justify-content:center;">
+                <div style="width:34px; height:124px; background:#2f698f;"></div>
+                <div style="width:34px; height:26px; background:#b2c7d5;"></div>
+              </div>
+              <div style="display:flex; justify-content:center; gap:18px; font-size:12px; color:#4d6273;">
+                <span>ρ₁≈1</span><span>ρ₂≪1</span>
+              </div>
+            </div>
+            <div style="border:1px solid #d2d8d0; background:#fff; padding:8px;">
+              <div class="label">宏观变量</div>
+              <div style="height:170px; position:relative;">
+                <div style="position:absolute; left:40px; right:40px; top:84px; border-top:4px solid #c46a2f;"></div>
+                <div style="position:absolute; left:68px; top:55px; width:16px; height:16px; background:#2f698f; border-radius:50%;"></div>
+                <div style="position:absolute; left:132px; top:55px; width:16px; height:16px; background:#2f698f; border-radius:50%;"></div>
+                <div style="position:absolute; left:196px; top:55px; width:16px; height:16px; background:#2f698f; border-radius:50%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>方案 C</h3>
+      <p>不只给相图，还把“微观几何 → 奇异值分离 → 序参量”串成一页。最适合直接服务文档叙事。</p>
+    </div>
+  </div>
+</div>
