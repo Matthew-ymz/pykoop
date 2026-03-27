@@ -1,0 +1,22 @@
+[
+  {
+    "run_name": "benchmark_single",
+    "N": 10,
+    "n_clusters": 2,
+    "K_intra": 5.0,
+    "K_inter": 0.11,
+    "noise": 0.0,
+    "dt": 0.01,
+    "T": 100.0,
+    "burn_in": 1000,
+    "sample_stride": 10,
+    "lag_steps": 10,
+    "library_kind": "identity+fourier",
+    "fourier_n_frequencies": 1,
+    "center_features": false,
+    "n_trajectories": 1,
+    "weights_mode": "uniform",
+    "rank_target": 2,
+    "preprocess": "none"
+  }
+]
