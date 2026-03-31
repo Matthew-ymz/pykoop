@@ -2643,3 +2643,95 @@ def plot_station_with_map(
     if return_fig:
         return fig, axes[:num_panels]
     plt.show()
+
+
+def compute_gamma_ce_metrics(singular_values, alpha=1.0, rank_candidates=None, manual_r=None, eps=1e-10):
+    """
+    基于定义 12 和定义 13 计算白化 Koopman 的可逆性与 CE 指标。
+
+    参数
+    ----
+    singular_values : array-like
+        白化 Koopman 矩阵 K_bar 的奇异值。
+    alpha : float, default=1.0
+        定义 12/13 中的 alpha 参数。
+    rank_candidates : iterable[int] or None
+        参与搜索的候选 r。若为 None，则默认使用 1..effective_rank。
+    manual_r : int or None
+        用户手动指定的 r。若为 None，则不计算对应单值。
+    eps : float, default=1e-10
+        判定有效奇异值的阈值。
+
+    返回
+    ----
+    dict
+        包含：
+        - reversibility_channel_scores = sigma_i^alpha
+        - Gamma_alpha_K
+        - gamma_alpha_K
+        - effective_rank
+        - rank_candidates
+        - delta_gamma_by_r
+        - selected_r
+        - delta_gamma_selected_r
+        - manual_r
+        - delta_gamma_manual_r
+    """
+    singular_values = np.real_if_close(np.asarray(singular_values, dtype=float).ravel())
+    if singular_values.ndim != 1:
+        raise ValueError("singular_values 必须是一维数组")
+
+    effective_mask = singular_values > eps
+    effective_rank = int(np.sum(effective_mask))
+    if effective_rank <= 0:
+        raise ValueError("没有有效奇异值，无法计算 Gamma/CE 指标")
+
+    effective_singular_values = singular_values[:effective_rank]
+    reversibility_channel_scores = np.power(effective_singular_values, alpha)
+    Gamma_alpha_K = float(np.sum(reversibility_channel_scores))
+    gamma_alpha_K = float(np.mean(reversibility_channel_scores))
+
+    if rank_candidates is None:
+        rank_candidates = list(range(1, effective_rank + 1))
+    else:
+        rank_candidates = sorted(
+            {
+                int(r)
+                for r in rank_candidates
+                if 1 <= int(r) <= effective_rank
+            }
+        )
+        if not rank_candidates:
+            raise ValueError("rank_candidates 过滤后为空，请检查候选 r 范围")
+
+    delta_gamma_by_r = {
+        int(r): float(np.mean(reversibility_channel_scores[: int(r)]) - gamma_alpha_K)
+        for r in rank_candidates
+    }
+
+    selected_r = int(max(delta_gamma_by_r, key=delta_gamma_by_r.get))
+    delta_gamma_selected_r = float(delta_gamma_by_r[selected_r])
+
+    manual_r_out = None if manual_r is None else int(manual_r)
+    delta_gamma_manual_r = None
+    if manual_r_out is not None:
+        if not (1 <= manual_r_out <= effective_rank):
+            raise ValueError(
+                f"manual_r={manual_r_out} 超出有效维数范围 1..{effective_rank}"
+            )
+        delta_gamma_manual_r = float(
+            np.mean(reversibility_channel_scores[:manual_r_out]) - gamma_alpha_K
+        )
+
+    return {
+        "reversibility_channel_scores": np.real_if_close(reversibility_channel_scores),
+        "Gamma_alpha_K": Gamma_alpha_K,
+        "gamma_alpha_K": gamma_alpha_K,
+        "effective_rank": effective_rank,
+        "rank_candidates": rank_candidates,
+        "delta_gamma_by_r": delta_gamma_by_r,
+        "selected_r": selected_r,
+        "delta_gamma_selected_r": delta_gamma_selected_r,
+        "manual_r": manual_r_out,
+        "delta_gamma_manual_r": delta_gamma_manual_r,
+    }
