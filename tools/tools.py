@@ -2735,3 +2735,969 @@ def compute_gamma_ce_metrics(singular_values, alpha=1.0, rank_candidates=None, m
         "manual_r": manual_r_out,
         "delta_gamma_manual_r": delta_gamma_manual_r,
     }
+
+
+# ============================================================================
+# GIS pipeline helpers
+# 新增说明：
+# - 以下函数服务于 `研究框架.md` 附录 C / D 所定义的 GIS 主流程。
+# - 设计原则是：只新增、不影响现有函数；参数尽量显式、可扩展，便于后续做
+#   tau / noise / alpha / rank / eps 等扫描实验。
+# ============================================================================
+
+def make_step_system_matrix(lam, mu):
+    """
+    构造第一类 step 系统在观测坐标 [x, y, x^2] 下的解析矩阵 A。
+
+    Parameters
+    ----------
+    lam : float
+        x_{k+1} = lam * x_k 中的参数。
+    mu : float
+        y_{k+1} = mu * y_k + (lam^2 - mu) * x_k^2 中的参数。
+
+    Returns
+    -------
+    np.ndarray of shape (3, 3)
+        观测层解析动力学矩阵。
+    """
+    return np.array(
+        [
+            [lam, 0.0, 0.0],
+            [0.0, mu, lam ** 2 - mu],
+            [0.0, 0.0, lam ** 2],
+        ],
+        dtype=float,
+    )
+
+
+def step_map(x, y, lam, mu):
+    """
+    第一类 step 系统的一步映射。
+
+    Parameters
+    ----------
+    x, y : float
+        当前状态。
+    lam, mu : float
+        系统参数。
+
+    Returns
+    -------
+    tuple[float, float]
+        下一步状态 (x_next, y_next)。
+    """
+    x_next = lam * x
+    y_next = mu * y + (lam ** 2 - mu) * (x ** 2)
+    return x_next, y_next
+
+
+def observable_step(data_xy, mode='default'):
+    """
+    第一类 step 系统的默认观测函数。
+
+    当前默认将二维状态 [x, y] 提升到观测层 [x, y, x^2]。
+    后续若要改观测函数，可通过 mode 扩展。
+
+    Parameters
+    ----------
+    data_xy : array-like of shape (T, 2)
+        原始二维状态序列。
+    mode : str, default='default'
+        观测模式。目前支持：
+        - 'default' : [x, y, x^2]
+
+    Returns
+    -------
+    np.ndarray of shape (T, 3)
+        观测层数据。
+    """
+    data_xy = np.asarray(data_xy, dtype=float)
+    if data_xy.ndim != 2 or data_xy.shape[1] != 2:
+        raise ValueError("data_xy 必须是形状为 (T, 2) 的二维数组")
+
+    x = data_xy[:, 0]
+    y = data_xy[:, 1]
+
+    if mode == 'default':
+        return np.column_stack([x, y, x ** 2])
+
+    raise ValueError(f"暂不支持的 observable_step mode: {mode}")
+
+
+def observable_step2(data_xy, mode='default'):
+    """
+    step2 系统的默认观测函数。
+
+    当前默认将二维状态 [x, y] 提升到观测层 [x, y, y^2]。
+
+    Parameters
+    ----------
+    data_xy : array-like of shape (T, 2)
+        原始二维状态序列。
+    mode : str, default='default'
+        观测模式。目前支持：
+        - 'default' : [x, y, y^2]
+
+    Returns
+    -------
+    np.ndarray of shape (T, 3)
+        观测层数据。
+    """
+    data_xy = np.asarray(data_xy, dtype=float)
+    if data_xy.ndim != 2 or data_xy.shape[1] != 2:
+        raise ValueError("data_xy 必须是形状为 (T, 2) 的二维数组")
+
+    x = data_xy[:, 0]
+    y = data_xy[:, 1]
+
+    if mode == 'default':
+        return np.column_stack([x, y, y ** 2])
+
+    raise ValueError(f"暂不支持的 observable_step2 mode: {mode}")
+
+
+def simulate_discrete_system(map_func, initial_states, steps, system_kwargs=None, dt=1.0):
+    """
+    用统一接口模拟离散系统轨迹。
+
+    Parameters
+    ----------
+    map_func : callable
+        一步映射函数，签名应为 map_func(x, y, **system_kwargs) -> (x_next, y_next)。
+    initial_states : array-like
+        初始状态。支持：
+        - shape (2,) : 单条轨迹初值
+        - shape (N, 2) : 多条轨迹初值
+    steps : int
+        演化步数。
+    system_kwargs : dict or None
+        传给 map_func 的额外参数。
+    dt : float, default=1.0
+        时间步长，仅用于生成时间轴。
+
+    Returns
+    -------
+    dict
+        {
+            "trajectories": np.ndarray, shape (N, steps + 1, 2),
+            "time_grid": np.ndarray, shape (steps + 1,),
+        }
+    """
+    if system_kwargs is None:
+        system_kwargs = {}
+
+    initial_states = np.asarray(initial_states, dtype=float)
+    if initial_states.ndim == 1:
+        if initial_states.shape[0] != 2:
+            raise ValueError("单个初始状态必须是长度为 2 的向量")
+        initial_states = initial_states[None, :]
+    if initial_states.ndim != 2 or initial_states.shape[1] != 2:
+        raise ValueError("initial_states 必须是形状为 (2,) 或 (N, 2) 的数组")
+
+    n_traj = initial_states.shape[0]
+    trajectories = np.zeros((n_traj, steps + 1, 2), dtype=float)
+    trajectories[:, 0, :] = initial_states
+
+    for i in range(n_traj):
+        x, y = initial_states[i]
+        for t in range(steps):
+            x, y = map_func(x, y, **system_kwargs)
+            trajectories[i, t + 1, 0] = x
+            trajectories[i, t + 1, 1] = y
+
+    time_grid = np.arange(steps + 1, dtype=float) * dt
+    return {"trajectories": trajectories, "time_grid": time_grid}
+
+
+def add_gaussian_noise(data, noise_scale=1.0, cov=None, random_state=None):
+    """
+    给数据叠加高斯噪声。
+
+    Parameters
+    ----------
+    data : array-like of shape (..., d)
+        原始数据，最后一维视为特征维度。
+    noise_scale : float, default=1.0
+        噪声强度。若 cov 为单位阵，则等价于标准正态乘以 noise_scale。
+    cov : array-like of shape (d, d) or None
+        噪声协方差矩阵。若为 None，则默认使用单位阵。
+    random_state : int, np.random.Generator, or None
+        随机种子或随机数发生器。
+
+    Returns
+    -------
+    dict
+        {
+            "noisy_data": np.ndarray,
+            "noise": np.ndarray,
+            "cov": np.ndarray,
+        }
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim < 2:
+        raise ValueError("data 至少应为二维，最后一维表示特征")
+
+    feature_dim = data.shape[-1]
+    cov = np.eye(feature_dim, dtype=float) if cov is None else np.asarray(cov, dtype=float)
+    if cov.shape != (feature_dim, feature_dim):
+        raise ValueError(f"cov 形状必须为 ({feature_dim}, {feature_dim})")
+
+    if isinstance(random_state, np.random.Generator):
+        rng = random_state
+    else:
+        rng = np.random.default_rng(random_state)
+
+    flat_shape = int(np.prod(data.shape[:-1]))
+    noise = rng.multivariate_normal(
+        mean=np.zeros(feature_dim, dtype=float),
+        cov=(noise_scale ** 2) * cov,
+        size=flat_shape,
+    ).reshape(data.shape)
+
+    return {
+        "noisy_data": data + noise,
+        "noise": noise,
+        "cov": (noise_scale ** 2) * cov,
+    }
+
+
+def prepare_time_pairs(data, tau=1, burn_in=0, stride=1):
+    """
+    根据时间尺度 tau、预热步数 burn_in 与采样步长 stride 构造时间配对样本。
+
+    Parameters
+    ----------
+    data : array-like of shape (T, d)
+        时间序列数据。
+    tau : int, default=1
+        配对间隔。
+    burn_in : int, default=0
+        丢弃开头若干步。
+    stride : int, default=1
+        抽样步长。
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        (X_now, X_next)，两者形状均为 (N, d)。
+    """
+    data = np.asarray(data, dtype=float)
+    if data.ndim != 2:
+        raise ValueError("data 必须是形状为 (T, d) 的二维数组")
+    if tau <= 0 or stride <= 0 or burn_in < 0:
+        raise ValueError("tau、stride 必须为正，burn_in 必须非负")
+
+    data_used = data[burn_in::stride]
+    if len(data_used) <= tau:
+        raise ValueError("样本太短，无法构造给定 tau 的配对数据")
+
+    x_now = data_used[:-tau]
+    x_next = data_used[tau:]
+    return x_now, x_next
+
+
+def _safe_symmetrize(matrix):
+    """返回对称化后的矩阵，便于协方差与谱运算的数值稳定。"""
+    matrix = np.asarray(matrix, dtype=float)
+    return 0.5 * (matrix + matrix.T)
+
+
+def _regularized_pinv(matrix, regularization=1e-10):
+    """
+    计算带正则化的伪逆。
+
+    Parameters
+    ----------
+    matrix : array-like
+        输入矩阵。
+    regularization : float
+        对角正则项强度。
+
+    Returns
+    -------
+    np.ndarray
+        正则化伪逆。
+    """
+    matrix = np.asarray(matrix, dtype=float)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        return np.linalg.pinv(matrix, rcond=regularization)
+    reg_eye = regularization * np.eye(matrix.shape[0], dtype=float)
+    return np.linalg.pinv(matrix + reg_eye, rcond=regularization)
+
+
+def _pseudo_logdet_positive(matrix, eps=1e-10):
+    """
+    计算半正定矩阵的对数伪行列式。
+
+    Parameters
+    ----------
+    matrix : array-like
+        输入矩阵。
+    eps : float
+        判定有效特征值的阈值。
+
+    Returns
+    -------
+    tuple[float, np.ndarray]
+        (log_pdet, positive_eigenvalues)
+    """
+    matrix = _safe_symmetrize(matrix)
+    eigvals = np.linalg.eigvalsh(matrix)
+    positive = eigvals[eigvals > eps]
+    if len(positive) == 0:
+        return -np.inf, positive
+    return float(np.sum(np.log(positive))), positive
+
+
+def estimate_covariance_from_residuals(residuals, center=True, regularization=1e-10):
+    """
+    从残差样本估计协方差矩阵。
+
+    Parameters
+    ----------
+    residuals : array-like of shape (N, d)
+        残差样本。
+    center : bool, default=True
+        是否先减去样本均值。
+    regularization : float, default=1e-10
+        对角正则项，避免协方差奇异。
+
+    Returns
+    -------
+    np.ndarray of shape (d, d)
+        残差协方差矩阵。
+    """
+    residuals = np.asarray(residuals, dtype=float)
+    if residuals.ndim != 2:
+        raise ValueError("residuals 必须是形状为 (N, d) 的二维数组")
+    if len(residuals) == 0:
+        raise ValueError("residuals 为空，无法估计协方差")
+
+    res = residuals - residuals.mean(axis=0, keepdims=True) if center else residuals
+    n_samples = res.shape[0]
+    cov = (res.T @ res) / max(n_samples - 1, 1)
+    cov = _safe_symmetrize(cov)
+    cov += regularization * np.eye(cov.shape[0], dtype=float)
+    return cov
+
+
+def fit_linear_gis_from_pairs(X_now, X_next, fit_intercept=False, ridge=0.0, regularization=1e-10):
+    """
+    从配对样本拟合线性 GIS：
+        X_next ≈ A X_now + residual
+
+    Parameters
+    ----------
+    X_now, X_next : array-like of shape (N, d)
+        当前时刻与未来时刻的配对数据。
+    fit_intercept : bool, default=False
+        是否拟合截距。当前 notebook 主链默认不拟合截距。
+    ridge : float, default=0.0
+        岭回归正则项强度。
+    regularization : float, default=1e-10
+        协方差与伪逆计算时使用的数值稳定项。
+
+    Returns
+    -------
+    dict
+        {
+            "A": A,
+            "K_raw": K_raw,
+            "residuals": residuals,
+            "Sigma": Sigma,
+            "C00": C00,
+            "C01": C01,
+            "C11": C11,
+            "intercept": intercept,
+        }
+    """
+    X_now = np.asarray(X_now, dtype=float)
+    X_next = np.asarray(X_next, dtype=float)
+    if X_now.ndim != 2 or X_next.ndim != 2 or X_now.shape != X_next.shape:
+        raise ValueError("X_now 与 X_next 必须是形状相同的二维数组")
+
+    n_samples, dim = X_now.shape
+    if n_samples < 2:
+        raise ValueError("样本数过少，至少需要 2 个样本")
+
+    x_now_center = X_now.copy()
+    x_next_center = X_next.copy()
+    intercept = np.zeros(dim, dtype=float)
+
+    if fit_intercept:
+        mean_now = X_now.mean(axis=0)
+        mean_next = X_next.mean(axis=0)
+        x_now_center = X_now - mean_now
+        x_next_center = X_next - mean_next
+    else:
+        mean_now = np.zeros(dim, dtype=float)
+        mean_next = np.zeros(dim, dtype=float)
+
+    C00 = (x_now_center.T @ x_now_center) / n_samples
+    C01 = (x_now_center.T @ x_next_center) / n_samples
+    C11 = (x_next_center.T @ x_next_center) / n_samples
+
+    C00_reg = C00 + (ridge + regularization) * np.eye(dim, dtype=float)
+    K_raw = _regularized_pinv(C00_reg, regularization=regularization) @ C01
+    A = K_raw.T
+
+    if fit_intercept:
+        intercept = mean_next - A @ mean_now
+
+    predictions = (X_now @ A.T) + intercept
+    residuals = X_next - predictions
+    Sigma = estimate_covariance_from_residuals(residuals, center=True, regularization=regularization)
+
+    return {
+        "A": A,
+        "K_raw": K_raw,
+        "residuals": residuals,
+        "Sigma": Sigma,
+        "C00": C00,
+        "C01": C01,
+        "C11": C11,
+        "intercept": intercept,
+    }
+
+
+def fit_linear_gis_from_matrix(A, state_dim=None, Sigma=None, sigma_eps=1e-10):
+    """
+    已知解析矩阵 A 时，将其包装为统一的 GIS 对象。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        已知动力学矩阵。
+    state_dim : int or None
+        状态维度。若为 None，则由 A 自动推断。
+    Sigma : array-like of shape (d, d) or None
+        已知噪声协方差矩阵。若为 None，则使用 sigma_eps * I 作为近零噪声近似。
+    sigma_eps : float, default=1e-10
+        当 Sigma 为 None 时使用的近零噪声强度。
+
+    Returns
+    -------
+    dict
+        {
+            "A": A,
+            "Sigma": Sigma,
+            "state_dim": d,
+            "meta": {...},
+        }
+    """
+    A = np.asarray(A, dtype=float)
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A 必须是方阵")
+
+    d = A.shape[0] if state_dim is None else int(state_dim)
+    if d != A.shape[0]:
+        raise ValueError("state_dim 与 A 的维度不一致")
+
+    if Sigma is None:
+        Sigma = sigma_eps * np.eye(d, dtype=float)
+    else:
+        Sigma = np.asarray(Sigma, dtype=float)
+        if Sigma.shape != (d, d):
+            raise ValueError(f"Sigma 形状必须为 ({d}, {d})")
+        Sigma = _safe_symmetrize(Sigma)
+
+    return {
+        "A": A,
+        "Sigma": Sigma,
+        "state_dim": d,
+        "meta": {
+            "provided_matrix": True,
+            "near_zero_noise": Sigma is None,
+            "sigma_eps": sigma_eps,
+        },
+    }
+
+
+def compute_gis_metrics(A, Sigma, alpha=1.0, eps=1e-10):
+    """
+    计算 GIS 主链中的核心指标：
+    - Gamma
+    - log_Gamma
+    - J_alpha
+    - D
+    - N
+    同时返回与 SVD 相关的矩阵及谱信息。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        动力学矩阵。
+    Sigma : array-like of shape (d, d)
+        噪声协方差矩阵。
+    alpha : float, default=1.0
+        近似可逆性中的权重参数。
+    eps : float, default=1e-10
+        数值稳定阈值。
+
+    Returns
+    -------
+    dict
+        包含 Gamma、log_Gamma、J_alpha、D、N 及谱分解所需中间量。
+    """
+    A = np.asarray(A, dtype=float)
+    Sigma = np.asarray(Sigma, dtype=float)
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A 必须是方阵")
+    if Sigma.ndim != 2 or Sigma.shape != A.shape:
+        raise ValueError("Sigma 必须与 A 维度一致")
+
+    d = A.shape[0]
+    Sigma = _safe_symmetrize(Sigma) + eps * np.eye(d, dtype=float)
+    Sigma_inv = _regularized_pinv(Sigma, regularization=eps)
+    backward_matrix = _safe_symmetrize(A.T @ Sigma_inv @ A)
+
+    log_pdet_sigma_inv, sigma_inv_pos = _pseudo_logdet_positive(Sigma_inv, eps=eps)
+    log_pdet_backward, backward_pos = _pseudo_logdet_positive(backward_matrix, eps=eps)
+
+    D = log_pdet_sigma_inv
+    N = log_pdet_backward
+    log_Gamma = (0.5 - alpha / 4.0) * N + (alpha / 4.0) * D
+    Gamma = float(np.exp(log_Gamma)) if np.isfinite(log_Gamma) else 0.0
+    J_alpha = log_Gamma / d
+
+    sv_forward = np.linalg.svd(Sigma_inv, compute_uv=False)
+    sv_backward = np.linalg.svd(backward_matrix, compute_uv=False)
+
+    return {
+        "Gamma": Gamma,
+        "log_Gamma": float(log_Gamma),
+        "J_alpha": float(J_alpha),
+        "D": float(D),
+        "N": float(N),
+        "Sigma_inv": Sigma_inv,
+        "A_t_Sigma_inv_A": backward_matrix,
+        "sv_forward": np.real_if_close(sv_forward),
+        "sv_backward": np.real_if_close(sv_backward),
+        "positive_eigs_forward": np.real_if_close(sigma_inv_pos),
+        "positive_eigs_backward": np.real_if_close(backward_pos),
+        "alpha": float(alpha),
+        "dimension": int(d),
+    }
+
+
+def predict_linear_gis(A, X0, steps=1):
+    """
+    基于线性 GIS 做一步或多步预测。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        动力学矩阵。
+    X0 : array-like of shape (N, d) or (d,)
+        初始状态。
+    steps : int, default=1
+        预测步数。steps=1 表示单步预测。
+
+    Returns
+    -------
+    np.ndarray
+        预测结果，与输入 X0 在样本维度上保持一致。
+    """
+    A = np.asarray(A, dtype=float)
+    X0 = np.asarray(X0, dtype=float)
+    if X0.ndim == 1:
+        X0 = X0[None, :]
+    if X0.ndim != 2 or X0.shape[1] != A.shape[0]:
+        raise ValueError("X0 必须是形状为 (N, d) 或 (d,) 的数组，且维度与 A 一致")
+    if steps <= 0:
+        raise ValueError("steps 必须为正整数")
+
+    A_power = np.linalg.matrix_power(A, steps)
+    return X0 @ A_power.T
+
+
+def compute_prediction_errors(A, series, tau=1, horizons=(1,)):
+    """
+    统一计算线性 GIS 的单步和多步预测误差。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        动力学矩阵。
+    series : array-like of shape (T, d)
+        时间序列。
+    tau : int, default=1
+        基础时间尺度。当前实现中 horizon=k 表示预测 k * tau 步。
+    horizons : iterable[int], default=(1,)
+        需要计算的预测步数列表。
+
+    Returns
+    -------
+    dict
+        {
+            horizon: {
+                "predictions": ...,
+                "targets": ...,
+                "pointwise_errors": e,
+                "mean_error": E,
+            }
+        }
+    """
+    series = np.asarray(series, dtype=float)
+    if series.ndim != 2:
+        raise ValueError("series 必须是形状为 (T, d) 的二维数组")
+    if tau <= 0:
+        raise ValueError("tau 必须为正整数")
+
+    results = {}
+    for horizon in horizons:
+        horizon = int(horizon)
+        if horizon <= 0:
+            raise ValueError("horizons 中的元素必须为正整数")
+        shift = horizon * tau
+        if len(series) <= shift:
+            raise ValueError(f"序列长度不足，无法计算 horizon={horizon} 的预测误差")
+
+        x_now = series[:-shift]
+        x_target = series[shift:]
+        preds = predict_linear_gis(A, x_now, steps=horizon)
+        pointwise = np.sum((x_target - preds) ** 2, axis=1)
+        mean_error = float(np.mean(pointwise))
+        results[horizon] = {
+            "predictions": preds,
+            "targets": x_target,
+            "pointwise_errors": pointwise,
+            "mean_error": mean_error,
+        }
+    return results
+
+
+def compute_ce_from_micro_macro(micro_metrics, macro_metrics):
+    """
+    根据宏微观 GIS 指标计算宏观效率增益（CE）。
+
+    Parameters
+    ----------
+    micro_metrics : dict
+        微观层指标，应至少包含 J_alpha、D、N、log_Gamma。
+    macro_metrics : dict
+        宏观层指标，应至少包含 J_alpha、D、N、log_Gamma。
+
+    Returns
+    -------
+    dict
+        {
+            "CE": ...,
+            "delta_J": ...,
+            "delta_D": ...,
+            "delta_N": ...,
+            "delta_log_Gamma": ...,
+        }
+    """
+    delta_J = float(macro_metrics["J_alpha"] - micro_metrics["J_alpha"])
+    delta_D = float(macro_metrics["D"] - micro_metrics["D"])
+    delta_N = float(macro_metrics["N"] - micro_metrics["N"])
+    delta_log_gamma = float(macro_metrics["log_Gamma"] - micro_metrics["log_Gamma"])
+    return {
+        "CE": delta_J,
+        "delta_J": delta_J,
+        "delta_D": delta_D,
+        "delta_N": delta_N,
+        "delta_log_Gamma": delta_log_gamma,
+    }
+
+
+def select_macro_rank(values, mode='gap', threshold=None, manual_r=None, eps=1e-10):
+    """
+    选择宏观维度 r。
+
+    Parameters
+    ----------
+    values : array-like
+        用于选秩的谱值，通常为奇异值谱或特征值模长谱，默认要求已按降序排列。
+    mode : str, default='gap'
+        选秩模式：
+        - 'manual' : 使用 manual_r
+        - 'threshold' : 保留大于 threshold 的谱值数目
+        - 'gap' : 根据相邻谱值比值最大的间隙选取
+        - 'energy' : 用 threshold 解释为累计能量比例
+    threshold : float or None
+        threshold / energy 模式下的阈值。
+    manual_r : int or None
+        手动指定的秩。
+    eps : float, default=1e-10
+        有效谱值阈值。
+
+    Returns
+    -------
+    tuple[int, dict]
+        (r, rank_meta)
+    """
+    values = np.real_if_close(np.asarray(values, dtype=float).ravel())
+    positive = values[values > eps]
+    if len(positive) == 0:
+        raise ValueError("没有有效谱值，无法选择宏观维度")
+
+    if mode == 'manual':
+        if manual_r is None:
+            raise ValueError("mode='manual' 时必须提供 manual_r")
+        r = int(manual_r)
+    elif mode == 'threshold':
+        if threshold is None:
+            raise ValueError("mode='threshold' 时必须提供 threshold")
+        r = int(np.sum(positive >= threshold))
+        r = max(r, 1)
+    elif mode == 'energy':
+        if threshold is None:
+            raise ValueError("mode='energy' 时必须提供 threshold（建议取 0~1）")
+        energy = np.cumsum(positive) / np.sum(positive)
+        r = int(np.searchsorted(energy, threshold, side='left') + 1)
+    elif mode == 'gap':
+        if len(positive) == 1:
+            r = 1
+        else:
+            ratios = positive[:-1] / np.maximum(positive[1:], eps)
+            r = int(np.argmax(ratios) + 1)
+    else:
+        raise ValueError(f"不支持的 rank selection mode: {mode}")
+
+    r = min(max(r, 1), len(positive))
+    return r, {
+        "mode": mode,
+        "threshold": threshold,
+        "manual_r": manual_r,
+        "effective_rank": int(len(positive)),
+        "used_values": positive,
+        "selected_r": int(r),
+    }
+
+
+def build_w_from_svd(A, Sigma, r=None, alpha=1.0, eps=1e-10, mode='two_stage'):
+    """
+    基于 SVD 路线构造粗粒化矩阵 W。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        动力学矩阵。
+    Sigma : array-like of shape (d, d)
+        协方差矩阵。
+    r : int or None
+        宏观维度。若为 None，则根据 backward 奇异值谱自动选取。
+    alpha : float, default=1.0
+        当前版本中保留该参数，便于后续按 alpha 加权扩展。
+    eps : float, default=1e-10
+        数值阈值。
+    mode : str, default='two_stage'
+        构造模式：
+        - 'two_stage' : 优先结合 Sigma^{-1} 与 A^T Sigma^{-1} A 的方向信息
+        - 'backward_only' : 只使用 A^T Sigma^{-1} A 的左奇异向量
+
+    Returns
+    -------
+    dict
+        {
+            "W": W,
+            "r": r,
+            "sv_info": ...,
+            "basis_info": ...,
+        }
+    """
+    metrics = compute_gis_metrics(A, Sigma, alpha=alpha, eps=eps)
+    sigma_inv = metrics["Sigma_inv"]
+    backward = metrics["A_t_Sigma_inv_A"]
+    sv_forward = metrics["sv_forward"]
+    sv_backward = metrics["sv_backward"]
+
+    if r is None:
+        r, _ = select_macro_rank(sv_backward, mode='gap', eps=eps)
+    r = int(r)
+
+    if mode == 'backward_only':
+        U_b, _, _ = np.linalg.svd(backward, full_matrices=False)
+        basis = U_b[:, :r]
+    elif mode == 'two_stage':
+        U_f, S_f, _ = np.linalg.svd(sigma_inv, full_matrices=False)
+        U_b, S_b, _ = np.linalg.svd(backward, full_matrices=False)
+
+        combined_vectors = np.concatenate([U_f, U_b], axis=1)
+        combined_scores = np.concatenate([S_f, S_b], axis=0)
+        keep = combined_scores > eps
+        combined_vectors = combined_vectors[:, keep]
+        combined_scores = combined_scores[keep]
+        if combined_vectors.shape[1] == 0:
+            raise ValueError("SVD two_stage 模式下没有可用主方向")
+
+        weighted_vectors = combined_vectors * combined_scores
+        U_c, _, _ = np.linalg.svd(weighted_vectors, full_matrices=False)
+        basis = U_c[:, :r]
+    else:
+        raise ValueError(f"不支持的 SVD W 构造模式: {mode}")
+
+    W = basis.T
+    return {
+        "W": np.real_if_close(W),
+        "r": r,
+        "sv_info": {
+            "sv_forward": np.real_if_close(sv_forward),
+            "sv_backward": np.real_if_close(sv_backward),
+        },
+        "basis_info": {
+            "mode": mode,
+            "basis": np.real_if_close(basis),
+        },
+    }
+
+
+def build_w_from_evd(A, r=None, mode='eig_abs'):
+    """
+    基于特征值分解构造对照版粗粒化矩阵 W。
+
+    Parameters
+    ----------
+    A : array-like of shape (d, d)
+        动力学矩阵。
+    r : int or None
+        宏观维度。若为 None，则按特征值模长自动选取。
+    mode : str, default='eig_abs'
+        特征值排序方式：
+        - 'eig_abs' : 按特征值模长降序
+        - 'eig_real' : 按实部降序
+
+    Returns
+    -------
+    dict
+        {
+            "W": W,
+            "r": r,
+            "eigvals": eigvals_sorted,
+            "eigvecs": eigvecs_sorted,
+        }
+    """
+    A = np.asarray(A, dtype=float)
+    eigvals, eigvecs = np.linalg.eig(A)
+
+    if mode == 'eig_abs':
+        order = np.argsort(-np.abs(eigvals))
+        score_values = np.abs(eigvals[order])
+    elif mode == 'eig_real':
+        order = np.argsort(-np.real(eigvals))
+        score_values = np.real(eigvals[order])
+    else:
+        raise ValueError(f"不支持的 EVD 排序模式: {mode}")
+
+    eigvals_sorted = eigvals[order]
+    eigvecs_sorted = eigvecs[:, order]
+
+    if r is None:
+        r, _ = select_macro_rank(np.abs(score_values), mode='gap', eps=1e-10)
+    r = int(r)
+
+    basis = np.real_if_close(eigvecs_sorted[:, :r])
+    basis = np.asarray(np.real(basis), dtype=float)
+    q, _ = np.linalg.qr(basis)
+    W = q[:, :r].T
+
+    return {
+        "W": np.real_if_close(W),
+        "r": r,
+        "eigvals": np.real_if_close(eigvals_sorted),
+        "eigvecs": np.real_if_close(eigvecs_sorted),
+    }
+
+
+def apply_coarse_graining(W, O):
+    """
+    根据线性粗粒化矩阵 W 生成宏观数据 Z。
+
+    Parameters
+    ----------
+    W : array-like of shape (r, m)
+        粗粒化矩阵。
+    O : array-like of shape (T, m)
+        观测层数据。
+
+    Returns
+    -------
+    np.ndarray of shape (T, r)
+        宏观层数据。
+    """
+    W = np.asarray(W, dtype=float)
+    O = np.asarray(O, dtype=float)
+    if O.ndim != 2 or W.ndim != 2 or O.shape[1] != W.shape[1]:
+        raise ValueError("W 与 O 的维度不匹配，要求 O.shape[1] == W.shape[1]")
+    return O @ W.T
+
+
+def summarize_pipeline_results(
+    config,
+    micro_fit,
+    macro_fit,
+    micro_metrics,
+    macro_metrics,
+    prediction_results,
+    ce_result,
+    extra=None,
+):
+    """
+    汇总一次 GIS 主流程实验的关键结果，便于 notebook 打印与后续 DataFrame 化。
+
+    Parameters
+    ----------
+    config : dict
+        实验配置。
+    micro_fit, macro_fit : dict
+        微观/宏观层拟合结果。
+    micro_metrics, macro_metrics : dict
+        微观/宏观层 GIS 指标。
+    prediction_results : dict
+        预测误差结果，建议包含 micro_errors / macro_errors。
+    ce_result : dict
+        compute_ce_from_micro_macro 的输出。
+    extra : dict or None
+        其他补充信息。
+
+    Returns
+    -------
+    tuple[dict, dict]
+        (summary_dict, summary_row)
+        其中 summary_row 适合直接放进 pd.DataFrame([summary_row])。
+    """
+    if extra is None:
+        extra = {}
+
+    summary_dict = {
+        "config": config,
+        "micro_fit": micro_fit,
+        "macro_fit": macro_fit,
+        "micro_metrics": micro_metrics,
+        "macro_metrics": macro_metrics,
+        "prediction_results": prediction_results,
+        "ce_result": ce_result,
+        "extra": extra,
+    }
+
+    micro_errors = prediction_results.get("micro_errors", {})
+    macro_errors = prediction_results.get("macro_errors", {})
+
+    summary_row = {
+        "experiment_name": config.get("experiment_name"),
+        "tau": config.get("tau"),
+        "alpha": config.get("alpha"),
+        "delta": config.get("delta"),
+        "noise_scale": config.get("noise_scale"),
+        "micro_dim": micro_metrics.get("dimension"),
+        "macro_dim": macro_metrics.get("dimension"),
+        "micro_J_alpha": micro_metrics.get("J_alpha"),
+        "macro_J_alpha": macro_metrics.get("J_alpha"),
+        "micro_D": micro_metrics.get("D"),
+        "macro_D": macro_metrics.get("D"),
+        "micro_N": micro_metrics.get("N"),
+        "macro_N": macro_metrics.get("N"),
+        "micro_log_Gamma": micro_metrics.get("log_Gamma"),
+        "macro_log_Gamma": macro_metrics.get("log_Gamma"),
+        "CE": ce_result.get("CE"),
+        "delta_D": ce_result.get("delta_D"),
+        "delta_N": ce_result.get("delta_N"),
+        "delta_log_Gamma": ce_result.get("delta_log_Gamma"),
+        "micro_E1": micro_errors.get(1, {}).get("mean_error"),
+        "macro_E1": macro_errors.get(1, {}).get("mean_error"),
+    }
+
+    return summary_dict, summary_row

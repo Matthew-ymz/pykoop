@@ -1,0 +1,1092 @@
+
+--- PAGE 1 ---
+
+SVD-based Causal Emergence for Gaussian Iterative Systems
+Kaiwei Liu1, Linli Pan1, Zhipeng Wang1, Mingzhe Yang1, Bing Yuan2and Jiang Zhang∗1,2
+1School of Systems Science, Beijing Normal University, 100875, Beijing, China
+2Swarma Research, 102300, Beijing, China
+Abstract
+Causal emergence (CE) based on effective information (EI) demonstrates that macro-states can exhibit stronger
+causal effects than micro-states in dynamics. However, the identification of CE and the maximization of EI
+both rely on coarse-graining strategies, which is a key challenge. A recently proposed CE framework based
+on approximate dynamical reversibility, utilizing singular value decomposition (SVD), is independent of coarse-
+graining. Still, it is limited to transition probability matrices (TPM) in discrete states. To address this, this
+article proposes a novel CE quantification framework for Gaussian iterative systems (GIS), based on approximate
+dynamical reversibility derived from the SVD of inverse covariance matrices in forward and backward dynamics.
+The positive correlation between SVD-based and EI-based CE, along with the equivalence condition, is given
+analytically. After that, we provide precise coarse-graining strategies directly from singular value spectra and
+orthogonal matrices. This new framework can be applied to any dynamical system with continuous states and
+Gaussian noise, such as auto-regressive growth models, Markov-Gaussian systems, and even SIR modeling using
+neural networks (NN). Numerical simulations on typical cases validate our theory and offer a new approach to
+studying the CE phenomenon, emphasizing noise and covariance over dynamical functions in both known models
+and machine learning.
+Keywords:Causal emergence, approximate dynamical reversibility, Gaussian iterative systems, singular value
+decomposition, inverse covariance matrix.
+1 Introduction
+Complex systems with dynamics are ubiquitous in the world around us, such as ecosystems [1], organisms [2, 3],
+brains [4–6], and cells [7, 8]. The interrelations between different dimensions and the accumulation of randomness
+result in entropy production and disorder, thereby complicating the analysis of dynamics of microscopic composition,
+such as individuals in society, cells in the human body, and atoms in matter [9, 10]. Many scholars contend that
+complex systems conceal profound patterns and regularities within their apparent disorder. For example, it is difficult
+to accurately describe the motion trajectory of microscopic molecules in gases or liquids, but the changes of both
+can be clearly described macroscopically using temperature and pressure. So they try to derive dynamical models
+of the systems at the macro-level by coarse-graining the dynamical systems, discovering that the strength of the
+causal effect [11–14] for macro-states can surpass those of micro-states, a phenomenon called causal emergence (CE)
+[15–20].
+The typical quantitative framework for CE proposed by Hoel et al. [16, 17, 21] is based on effective information
+(EI) [15], demonstrating that coarse-grained macro-states may have larger EI than micro-states, especially in Boolean
+networks [22], cellular automatons [23], even in Gaussian iterative systems (GIS) [24, 25]. With theoretical support,
+the study in Neural Information Squeezer plus (NIS+) [26, 27] based on Hoel’s EI framework utilizes neural networks
+(NN) to maximize EI and identify CE in data of the Boids model [28] or fRMI [29]. However, the dependence on
+coarse-graining strategies during maximizing EI within Hoel’s framework presents challenges. Both in NIS+ and
+analytic calculation, this dependence necessitates not only computing both the dynamic function of micro and macro
+states to get their EI, but also optimizing the coarse-graining strategy to maximize macro EI, significantly reducing
+computational efficiency.
+Some research is independent of predefined coarse-graining strategies and directly calculates systems’ CE without
+the optimization procedure. A notable example is Rosas’ framework [18], which is based on integrated information
+∗Email: zhangjiang@bnu.edu.cn
+1
+
+--- PAGE 2 ---
+
+decomposition theory [30, 31], and CE is quantified by calculating the synergic information (Syn) across micro-
+variables. However, this approach is challenging to implement due to the combinatorial explosion. Although Rosas
+proposed approximate methods [32–34] with results on real-world datasets, such as ECoG [35] or MEG [36], these
+methods require predefined macro-state variables and representation learning, which can’t provide accurate solutions.
+In addition, Barnett and Seth proposed a framework [19] for quantifying CE via dynamical independence. Yet, this
+framework has only been applied to linear systems [37]. Both methods utilize mutual information, making their
+results sensitive to data and limiting their ability to capture the system’s essential CE.
+To find a more essential quantification of CE, Zhang et al. recently proposed a CE quantification framework based
+on singular value decomposition (SVD) [38] for probability transition matrices (TPM), which is independent of the
+optimization of coarse-graining strategies and can simplify the calculation process of maximizing EI in a discrete
+probability space. Besides, the framework introduces the new concept of approximate dynamical reversibility derived
+from SVD to quantify the strength of causal effects, which describes the proximity of TPM to a permutation matrix.
+SVD-based CE can be quantified as the potential maximal efficiency increase of approximate dynamical reversibility.
+This work also finds that the essence of CE lies in redundancy, represented by irreversible and correlated information
+pathways. What’s more, this article demonstrates a strong correlation between the SVD-based and EI-based CE
+with maximized EI. However, this method only applies to discrete Markov chains [39] or complex networks [40, 41]
+and lacks an analytical and exact relation between the two quantifications of CE. More research is needed to extend
+this method to general dynamical systems with continuous states like GIS, which is the necessary path to apply CE
+theory to continuous real-number Euclidean probability spaces [42, 43].
+Based on previous theories of CE, our new research has four motivations. Firstly, for frameworks, SVD-based CE
+needs to be extended to dynamical systems with continuous real-number Euclidean probability spaces, and a more
+precise comparison between SVD-based and EI-based CE is required, which is also the main purpose of our work
+to achieve. Secondly, for models, we intend to develop an analytical solution that is independent of coarse-graining
+and maximizes EI for CE for GIS. Next, after obtaining the SVD-based CE of GIS, we aim to identify accurate
+parameters for the coarse-graining strategy and develop a universal algorithm to achieve this. Finally, to apply our
+new framework, we aim to extend the SVD-based CE theory presented in our paper to NN, which can be used to
+learn the dynamics in data and compute CE, while significantly enhancing operational efficiency.
+Driven by the above motivations, the main contributions of this article can be summarized into four parts: (1)
+Extend SVD-based CE to GIS via SVD on inverse covariance matrices of forward/backward dynamics (Section 2.1.3
+and 2.2); (2) Present analytical correlations between SVD-based and EI-based CE (Section 2.2.2); (3) Propose SVD-
+based coarse-graining using orthogonal matrices (Section 2.2.3 and 2.2.4); (4) Apply our framework to two different
+Gaussian systems and a trained NN model (Section 2.3). The details are elaborated in the following sections.
+2 Results
+2.1 Basic theories
+2.1.1 Dynamics
+Many real-world complex systems, whether physical, biological, economic, or social, exhibit dynamical behavior
+constructed by the interplay of deterministic laws and random disturbances as
+xt+1=f(x t) +ε t, εt∼ N(0,Σ),(2.1)
+xt∈ Rn,Σ∈ Rn×n, which we called Gaussian iterative systems (GIS) [44, 45].f(x t) :Rn→ Rncaptures
+deterministic dynamics, such as the Logistic function [46], the linear function [37] (examples in Section 2.3.1 and
+2.3.2), or discretized differential equations (examples in Section 2.3.3).ε tdenotes random noise, accounting for
+perturbations or unmodeled effects.
+For the convenience of analyzing the evolution of the entire system, we can use Taylor expansion in Appendix
+D.1 to linearize the functionf(x t) locally and transform the system into a linear GIS as
+xt+1=a0+Ax t+εt, εt∼ N(0,Σ),(2.2)
+wherea 0, xt∈ Rn, andA,Σ∈ Rn×nare the two most important parameters describing the properties of the
+dynamics. Eq.(2.2) can also be treated as a conditional probability or continuous TPM matrix as
+p(xt+1|xt) =N(Ax t+a0,Σ),(2.3)
+Appendix A.2.3 shows more details about which. The effects of parametersAand Σ under the simplest one-
+dimensional linear dynamics are shown in Fig.1.
+2
+
+--- PAGE 3 ---
+
+(a) (b)
+(c)
+(d)
+ (e)
+ (f)
+Figure 1: For the one-dimensional GISx t+1=ax t+εt, εt∼ N(0, σ2), the dynamics under three different parameter
+sets, under two different intervention distributionsp(x t), show the resulting distributionp(x t+1) and the causal effect
+measure. For any given probability densityp(x t) at timet, the conditional probabilityp(x t+1|xt) =N(a 0+Ax t,Σ)
+corresponding to the forward dynamics gives the probability densityp(x t+1) at the next time stept+ 1. In (a)
+and (d), when we stipulatea= 1.5, σ= 0.1, the effective informationJ= 1.298 and the dimensional average
+reversible information ˆγ α= 2.505 are satisfied. In (b) and (e), we increaseσtoσ= 0.2. At this time, due to
+the decrease in determinism,Jreduces toJ= 0.596, the dimensional average reversible information ˆγ α= 1.812,
+and the approximate reversibility and causal effect strength are reduced simultaneously. Return to the state of (a)
+(d), and then increaseain (c) (f) toa= 2. At this time, due to the increase in non-degeneracy, the causal effect
+strength increases toJ= 1.576, and the dimensional average reversible information increases to ˆγ α= 2.649. From
+this simple case, we can initially obtain three pieces of information: (1)Jand ˆγ αare only related top(x t+1|xt),
+and the probability densityp(x t) ofx tcan be defined arbitrarily; (2)Jand ˆγ αare both positively correlated with
+determinism and non-degeneracy, and increase synchronously with the increase ofaand decrease synchronously with
+the increase ofσ; (3)Jand ˆγ αare positively correlated.
+2.1.2 Causality
+The definition of causality is crucial for our research. In a linear dynamical system as described in Eq.(2.2), the
+statex tat timetcauses changes in statex t+1at the subsequent timet+ 1. Thus, we can assume thatx tis the
+cause andx t+1is the effect. This paper focuses on the strength of this causal effect between consecutive states at
+timetandt+ 1, quantified by the effective informationEI=I(x t, xt+1|do(x t)) for GIS [24, 25], which is defined as
+J ≡1
+nI(xt+1|do(x t∼ U([−L/2, L/2]n))) = lnpdet(ATΣ−1A)1
+2nL
+(2πe)1
+2=1
+2nrX
+i=1lnsi+ lnL
+(2πe)1
+2,(2.4)
+pdet(·) represents the pseudo-determinant [47] of matrix·, which is equivalent to the determinant det(·) when·is
+full-rank. The operatordo(·) signifies manual intervention, wherex t∼ U([−L/2, L/2]n) after applyingdo(·) onx t,
+withLbeing the interval size. Eq.(2.4) expandsJinto the sum of lns i, wheres 1≥ ··· ≥s rare the singular values
+ofATΣ−1A, andris its rank. The derivation process of EI can be found in Appendix A.1.1 and A.1.2.
+The EI in Eq.(2.4) can be divided into two terms [16, 25]: determinism
+Det= lnh
+(2πe)−1
+2pdet(Σ−1)1
+2ni
+(2.5)
+and non-degeneracy
+Nondeg= lnh
+pdet(ATΣ−1A)1
+2npdet(Σ)1
+2nLi
+.(2.6)
+3
+
+--- PAGE 4 ---
+
+Non-degeneracy
+ Determinism
+(a)(b)
+Figure 2: (a) Forp(x t+1|xt) =N(Ax t+a0,Σ), the covariance matrices of forward dynamicsx t+1=a0+Ax t+εtand
+backward dynamicsx t=A†xt+1−A†a0−A†εtare Σ andA†Σ(A†)T, respectively. Σ andA†Σ(A†)Tdetermine the
+approximate dynamical reversibility as Γ α. (b)α= 1 is often chosen to balance Γ α’s emphasis on both determinism
+and degeneracy. Forα <1, Γ αtends to capture more non-degeneracy ofp(x t+1|xt). Forα >1, Γ αemphasizes the
+determinism.
+These two indicators describe the degree of uncertainty of the effect variable when given the cause variable and the
+degree of uncertainty of the cause variable when given the effect variable.
+As shown in Fig.1, for the one-dimensional GISx t+1=ax t+εt, εt∼ N(0, σ2), the probability densityp(x t+1)
+at timet+ 1 can be inferred fromp(x t) using the conditional probabilityp(x t+1|xt). By varying parameters, we
+observe changes in the strength of the causal effect (J). First, we stipulatea= 1, σ= 0.1 in Fig.1a, d, the strength
+of causal effectJ= 1.289. Then we increaseσtoσ= 0.2, as shown in Fig.1b, e, due to the decrease of determinism,
+Jdecreases toJ= 0.596. After returning to the original state, we increaseatoa= 2, as shown in Fig.1c, f, due to
+the increase in non-degeneracy,Jincreases toJ= 1.576. We can find two rules. First, the probability densityp(x t)
+of the initialx tdoes not affect the strength of the causal effect. Whether it is the normal distribution in Fig.1a, b,
+and c or the uniform distribution in Fig.1d, e, and f, as long asp(x t+1|xt) is the same, the strength of the causal
+effect remains unchanged. Second, we can see that the strength of the dynamic causal effect is positively correlated
+with the parametera(orA, reflecting non-degeneracy) and negatively correlated with the standard deviationσ(or
+Σ, reflecting determinism).
+2.1.3 Approximate dynamical reversibility
+Another important property of dynamics that people are concerned about is dynamical reversibility. In Eq.(2.2),
+whenε t= 0 andf(x t) =a 0+Ax tis a reversible one-to-one mapping onRn, we assume that the dynamics of GIS
+described by Eq.(2.2) is strictly reversible asx t+1=a0+Ax t, and the corresponding backward dynamics of Eq.(2.2)
+can be directly established asx t=A−1(xt+1−a0). However, real-world dynamical systems are not always so simple
+and perfect. The presence of random noise and the irreversibility of the matrixAinfmapping can lead to the
+irreversibility of the dynamical system.
+Strict dynamical reversibility is a highly specialized case. However, for general dynamics, although it is not
+necessarily strictly reversible, it may be approximately reversible. For example, iff(x t) =a 0+Ax tis a reversible
+function, then dynamics like Eq.(2.1) with a smaller noise variance are closer to reversible dynamicsx t+1=f(x t)
+than a larger one. Therefore, for more general irreversible dynamics, we can use approximate dynamical reversibility
+to measure their closeness to reversible dynamics. In [38], Zhang et al. provide a general measure of approximate
+dynamical reversibility for discrete Markov chains, defined as the sum of theαpowers of the singular values of the
+TPM (shown in Appendix A.2.1).
+In this paper, we extend the concepts in [38] to the dynamics of GIS like Eq.(2.2) and use the singular value
+spectrum in functional analysis [48] and the Fourier transform [49] method to find an indicator for local approximate
+dynamical reversibility in a general GIS (We give the detailed derivation and calculation Appendix A.2.4 and A.2.5),
+defined as
+Γα=2π
+αn
+2
+pdet(ATΣ−1A)1
+2−α
+4pdet(Σ−1)α
+4, (2.7)
+where pdet(·) represents pseudo-determinant of the matrix·. When the matrix·is full-rank, it has the same
+meaning as the determinant det(·). Besides the first constant, this formula contains two terms: pdet(·) of the inverse
+4
+
+--- PAGE 5 ---
+
+covariance matrices of the forward and backward dynamics. This is clearer when we assumeAand Σ are reversible
+matrices. In this case, the forward dynamics isx t+1=a0+Ax t+εt, and the corresponding backward dynamics is
+xt=A−1(xt+1−a0−εt). The corresponding conditional probability distributions arep(x t+1|xt) =N(a 0+Ax t,Σ)
+andp(x t|xt+1) =N(A−1(xt+1−a0), A−1Σ(A−1)T), it can be seen that Σ−1andATΣ−1Arepresent the inverse
+covariance matrices of the forward and backward dynamics, respectively. Appendix A.2.3 also proves that whenA
+is not invertible, using the pseudo-inverse (·)†[50, 51] instead of the inverse (·)−1can yield the same result as shown
+in Fig.2a.
+αis a constant representing the relative influence of the covariances of the forward and backward dynamics on
+Γα, and a detailed derivation is provided in Appendix A.2.6 . Whenα→0, Γ α→0= 2π
+αn
+2
+α→0pdet(ATΣ−1A)1
+2is
+determined by the inverse covariance matrix of the backward dynamics, including the pdet(ATΣ−1A) term that plays
+a major role inNondegin Eq.(2.6), reflecting the non-degeneracy after eliminating the forward dynamics covariance
+(or determinism) interference. Whenα= 2, Γ 2= (π)n
+2pdet(Σ−1)1
+2is determined by the inverse covariance matrix of
+the forward dynamics, compared to theDetin Eq.(2.5), it reflects determinism. Generally, we can stipulate Γ = Γ 1
+asα= 1 to balance the proportion of determinism and non-degeneracy as shown in Fig.2b.
+Γαcan be considered a measure of approximate dynamical reversibility because when the uncertainty in the
+system’s forward and backward dynamics (i.e., the pseudo-determinant of the covariance matrix) is large, the pseudo-
+determinants of Σ−1andATΣ−1Abecome very small, and the dynamics become highly irreversible. Conversely, if
+the uncertainty in the system’s forward and backward dynamics is very small, or even approaches zero, the pseudo-
+determinants of Σ−1andATΣ−1Abecome very large, or even approach infinity. In this case, the system’s dynamics
+are very close to reversible dynamics, and using the de-noised reversible dynamics to approximate the GIS becomes
+effective.
+In order to avoid the excessive influence of variable dimension on the reversibility of dynamics, we can use the
+dimensional average reversible informationγ α≡1
+nln Γαto more effectively quantify the approximate dynamical
+reversibility. After removing the constant term, ˆγ α=γα−1
+2ln 2π
+α
+is a variable only determined by the singular
+values after the SVD of Σ−1andATΣ−1A.
+Lemma 2.1.(Dimensional average reversible information based on SVD) For GIS like Eq.(2.2), we only need to
+obtain the singular value spectra of inverse covariance matricesATΣ−1AandΣ−1to quantify the approximate dy-
+namical reversibility. The corresponding indicator is the dimensional average reversibility information after removing
+the constant term, defined as
+ˆγα=1
+n"
+(1
+2−α
+4)rsX
+i=1lnsi+α
+4rκX
+i=1lnκi#
+(2.8)
+Herer s, rκdenote the ranks of matricesATΣ−1A,Σ−1, respectively.s iandκ idenote thei-th singular value of
+matricesATΣ−1Aand matrixΣ−1respectively.
+Furthermore, by comparing the expression ofJ, we can obtain the approximate linear correlation between
+approximate dynamical reversibility and EI, as shown in the following theorem. A detailed proof is provided in
+Appendix B.1.
+Theorem 2.1.(Correlation betweenJandˆγ α): When the backward dynamicsp(x t|xt+1)is close to a normalized
+normal distribution asATΣ−1A≈I n,Jandˆγ αsatisfies
+ˆγα≃(1−α
+4)J+C, (2.9)
+Where≃denotes approximate equality, this equality holds strictly whenAis of full rank andATΣ−1A=I n, meaning
+the backward dynamicsp(x t|xt+1)is a normalized normal distribution.C= (1−α
+4) ln(L√
+2πe)is a constant term.
+The relationship between reversibility and causal effect measures can also be demonstrated through numerical
+examples in Section 2.1.2. As shown in Fig.1, for a one-dimensional GIS,x t+1=ax t+εt, εt∼ N(0, σ2), we can
+observe the same case as analysisJ. First, in Fig.1a, d, when we seta= 1.5, σ= 0.1, the dimensionally averaged
+approximate dynamical reversibility information ˆγ α= 2.505. Then, in Fig.1b, e we adjustσtoσ= 0.2, we can get
+ˆγα= 1.812. Ifais increased toa= 2 in Fig.1c, f, under this condition ˆγ α= 2.649. From this simple example, we
+can see the positive correlation between the dimensionally averaged approximately reversible information ˆγ αand the
+effective informationJ. At the same time, both indicators are only related to the conditional probabilityp(x t+1|xt)
+and have nothing to do withp(x t). This demonstrates that for a linear GIS like Eq.(2.2), there is a certain equivalence
+between the approximate dynamical reversibility and the strength of the causal effect.
+5
+
+--- PAGE 6 ---
+
+2.2 Causal emergence (CE)
+In this section, we discuss the core content of this paper, causal emergence (CE).
+2.2.1 Background: causal emergence based on maximizing EI
+Based on the concept of EI, [16, 17] defines and discusses CE for discrete-state systems with Markov chains in
+detail. For linear GIS, a quantitative characterization of CE based on maximizing EI is to simplify the description
+ofx tby taking any given coarse-graining mappingy t=ϕ(x t) =Wx t, W∈ Rk×n, k < n, wherekdenotes the
+macroscopic dimension. Thus, we can obtain a macroscopic variabley tand its corresponding macroscopic dynamics
+yt+1=A Mxt+εt, εt∼ N(0,Σ M). Furthermore, according to the definition of Eq.(2.4), the macro dynamics will
+have a macro effective informationJ M. Then, through
+∆J=J M− J= lnpdet(AT
+MΣ−1
+MAM)1
+2k
+pdet(ATΣ−1A)1
+2n,(2.10)
+we can directly calculate the value of CE, whereA M=WAW†and Σ M=WΣWTis affected byW, so ∆Jdepends
+on the coarse-graining strategyϕ(x t) =Wx tespecially its parameter matrixW.
+To make CE independent ofW, Hoel et al. and Liu et al. [16, 17, 25, 52] proposed the principle of maximizing
+the EI of the macro-state, that is, optimizingWso thatJ Mis maximized. However, this general maximization
+problem is difficult to solve directly, so we consider a special case. In this case, whenWis a unitary matrix, we can
+calculate CE based on EI maximization, influenced by the matrix’s singular values as
+∆J∗=1
+2kkX
+i=1lnsi−1
+2nrX
+i=1lnsi,(2.11)
+in whichs 1≥ ··· ≥s nrepresents the singular values of the matrixATΣ−1A. We find that the essence of CE in this
+case is that after removing the smaller singular values, the average of the larger singular values will be larger than
+the average of all singular values of the original matrix. The calculation process can be found in Appendix A.1.3 or
+[25]. The operation method for selecting the suitable macro dimensionkis detailed in Appendix A.1.4, whose idea
+originates from [53].
+2.2.2 Causal emergence based on approximate dynamical reversibility with SVD
+CE theories based on maximizing EI require solving an optimization problem to obtain the optimal coarse-graining
+strategy, a process that is often difficult to solve. Therefore, we need a more direct, approximately equivalent definition
+of CE that does not rely on the coarse-graining strategy. This is a definition of CE based on the concept of dynamical
+reversibility. It transforms the problem of solving the optimal coarse-graining solutionWinto SVD.
+We have now demonstrated that the approximate dynamical reversibility of GIS can be quantified directly based
+on SVD of Σ−1andATΣ−1A, and has an approximately linear relationship with maximized EI. We also know that
+traditional EI-based CE relies on coarse-graining strategies and macro dynamics, but after maximizing EI whenW
+is a unitary matrix, CE can also be obtained by eliminating the singular values ofATΣ−1A. So, can we directly
+define a metric for CE based on the singular value spectrum, bypassing the search for the optimal coarse-graining
+solutionW? This is the basic idea of the quantitative definition of SVD-based CE.
+From the definition of dimensional average reversible information ˆγ αin the Section 2.1.3, we can obtain that its
+final value depends on two spectra, one is the spectrums 1≥ ··· ≥s nofATΣ−1A, and the other is the spectrum
+κ1≥ ··· ≥κ nof Σ−1. Therefore, following the quantitative equation of CE (Eq.(2.11)), we can define CE based on
+approximate dynamical reversibility from the distribution of these two spectra as follows (The detailed calculation
+process is in Appendix B).
+Definition 2.1.(Causal emergence based on approximate dynamical reversibility with SVD): For the dynamics of
+the form in Eq.(2.2), the CE based on the approximate dynamical reversibility with SVD is
+∆Γα(ϵ)≡ˆγ α(ϵ)−ˆγ α=1
+rϵ"
+(1
+2−α
+4)rϵX
+i=1lnsi+α
+4rϵX
+i=1lnκi#
+−1
+n"
+(1
+2−α
+4)rsX
+i=1lnsi+α
+4rκX
+i=1lnκi#
+. (2.12)
+We define the effective rankr ϵas the dimension of the new system whose approximate dynamical reversibility is
+enhanced after eliminating all dimensions containing singular values less than a given threshold, that is, satisfying
+6
+
+--- PAGE 7 ---
+
+1 2 3 4￿￿￿￿￿￿￿￿￿￿￿￿
+Figure 3: This figure illustrates how to filter the dimensions of dynamics through SVD. The singular values of Σ−1
+andATΣ−1Aboth have a clear numerical decay between the second and third dimensions. Therefore, we can set a
+thresholdϵ(horizontal dashed line) at this location and perform a truncation, thereby ignoring singular values close
+to zero and their corresponding dimensions to the right of the truncation (vertical dashed line), while retaining the
+remaining singular values and their corresponding dimensions that are significantly greater than zero.
+κi< ϵors i< ϵ. This situation is also called vague CE. IfATΣ−1AorΣ−1is not full-rank, then whenϵ= 0, the
+situation∆Γ α(0)>0will still occur. We define this situation as clear CE. These are the two forms of SVD-based
+CE quantification methods.
+Based on this quantitative approach, we only need to know the singular values of Σ−1andATΣ−1Aand observe
+their singular value spectra to clearly determine whether CE exists. For example, if we assume that the four
+dimensions of the dynamics are completely independent of each other, andA,Σ are both diagonal matrices, then the
+singular vectors corresponding to the singular valuess iandκ iare the basis vectors of each dimension. As shown
+in the Fig.3, we can plot the singular value spectra by sorting all dimensions from largest to smallest according to
+their corresponding singular values. From Fig.3, we see that the singular values of Σ−1andATΣ−1Aboth have
+a clear numerical decay between the second and third dimensions. Therefore, we can set a thresholdϵ(horizontal
+dashed line) at this location and perform a truncation, thereby ignoring singular values close to zero and their
+corresponding dimensions to the right of the truncation (vertical dashed line), while retaining the remaining singular
+values and their corresponding dimensions that are significantly greater than zero. In other words, from this graph,
+we can simply observe whether there are singular values close to or equal to zero on the singular value spectra to
+determine whether CE exists. If so, CE has occurred in the system; otherwise, it has not. This observation can
+be directly quantified using the approximate dynamical reversibility. For the more general cases, we give a suitable
+coarse-graining strategy in Section 2.2.4.
+From physical perspectives, if the inverse covariance matrix of the forward or backward dynamics of a system
+contains one or more zero or approximately zero singular values, the system is said to have experienced CE. The
+singular vectors corresponding to these zero or approximately zero singular values represent redundant dimensions
+in the dynamics, and their presence significantly reduces the overall approximate dynamical reversibility of the
+system. Furthermore, suppose the redundant dimensions corresponding to these zero singular values are eliminated
+through appropriate coarse-graining strategies. In that case, dimensionality reduction can be achieved to eliminate
+the redundant dimensions of the dynamics, and the average approximate dynamical reversibility of the compressed
+dimensions will be improved. Therefore, the intensity of CE of the system can be quantitatively characterized
+based on the maximum possible increase in approximate dynamical reversibility, that is, the maximum degree of
+improvement in unit-dimensional approximate dynamical reversibility that can be achieved through ideal coarse-
+graining strategies.
+2.2.3 Rationality analysis
+This framework is reasonable, and the most important reason is that our new definition of CE is consistent with
+Hoel et al.’s definition [16, 17, 21, 24, 54–56].
+7
+
+--- PAGE 8 ---
+
+Firstly, there is an approximate linear relationship, analytically, between CE based on SVD and CE based on
+maximizing EI. There is detailed proof in Appendix B.1.
+Theorem 2.2.(Correlation between∆Γ α(ϵ)and∆J∗): When the backward dynamicsp(x t|xt+1)is close to a
+normalized normal distribution asATΣ−1A≈I n,∆Γ α(ϵ)and∆J∗are approximately linear and positively correlated
+as
+∆Γα(ϵ)≃(1−α
+4)∆J∗. (2.13)
+The equal sign holds when the backward dynamicsp(x t|xt+1)is a normalized normal distribution asATΣ−1A=I n.
+From a logical perspective, our definition of CE is actually an approximate necessary condition for maximizing
+EI-based CE as defined by Hoel et al. [16, 17]. In other words, for any Markov dynamics, if we want to find a coarse-
+graining strategy that maximizes EI, we can actually perform SVD on the dynamics first. For example, the discussion
+at the end of [25] on the case whereWis a unitary matrix actually transforms the coarse-graining strategy into a
+screening of singular values of the matrixATΣ−1A, which is part of the calculation of SVD-based CE, namely the SVD
+of the inverse covariance matrixATΣ−1A=USUTof backward dynamics. If the singular valuesS= diag(s 1,···, s n),
+and the orthogonal singular vector matrixU= (u 1,···, u n), in order to preserve the maximumksingular values,
+we only need to preserve the dimensions corresponding to these singular vectorsU 1= (u 1,···, u k) and discard
+U2= (u k+1,···, u n). Due to the orthogonality ofU, we can directly obtainUT
+1ATΣ−1AU1=UT
+1USUTU1=
+diag(s 1,···, s k). It can be seen that we only need to multiply the coarse-graining parameter matrixW=UT
+1by
+the original variables to make the inverse covariance matrixWATΣ−1AWTof the macroscopic backward dynamics
+become a diagonal matrix that only retainss 1,···, s k. The singular vectorsu 1,···, u kcorresponding to those larger
+singular values actually correspond to the optimal coarse-graining strategy we are looking for.
+Although there is a high likelihood that the two frameworks overlap, they are not entirely equivalent because the
+coarse-graining strategy obtained by maximizing EI ignores the covariance of forward dynamics. So, we propose an
+algorithm that constructs a coarse-graining strategy based on SVD, considering both the inverse covariance matrices
+Σ−1andATΣ−1Aof the forward and backward dynamics, and attempts to preserve the maximum singular values
+of the two matrices as much as possible. In this way, it can ensure that the coarse-graining strategy matrixWis
+unitary, and only the singular values of the inverse covariance matrix will be screened without changing the singular
+values, so that the probability space retained by the macro dynamics and the corresponding micro dynamics has
+the same probability distribution, and it can also ensure that both forward and backward dynamics are taken into
+account in the calculation of the coarse-graining strategy at the same time without only focusing on one side. For
+detailed information, we can refer to Section 2.2.4.
+2.2.4 Coarse-graining strategy based on SVD
+According to [38], the approximate dynamical reversibility Γ αobtained by SVD is approximately equivalent to
+maximizing EI in macroscopic dynamics, which is reflected in the fact that the singular vector corresponding to the
+maximum singular value of TPM is approximately consistent with the direction of maximizing macroscopic EI (shown
+in Appendix A.2.2). Furthermore, according to Section 2.2.1, applying SVD to the matrixATΣ−1Amaximizes the
+effective informationJ Mof the macro dynamics, assumingWis a unitary matrix. Similarly, the direction of the
+singular vectors corresponding to the largestksingular value indicates the direction that maximizesJ Mwhen the
+macroscopic dimension isk. Since the definition of Γ αincludes the singular value spectra of both Σ−1andATΣ−1A,
+in this new framework, we can directly perform singular value decomposition on Σ−1andATΣ−1A, then analyze
+and filter the combined singular value spectra, retaining the singular vector corresponding to the largest singular
+value to construct a coarse-graining strategy.
+However, in this process, the singular vectors to be retained by the two matrices Σ−1andATΣ−1Amay be
+orthogonal and non-orthogonal at the same time, which means there are conflicting parts in the linear subspaces
+spanned by them that need to be balanced and traded off. To do this, we need to specify a two-step coarse-graining
+strategy. First, all the singular valuess 1≥ ··· ≥s nandκ 1≥ ··· ≥κ nare sorted from large to small to form a
+new sequence ˜s 1≥ ··· ≥˜s 2n, and then truncated with the thresholdϵto obtain the new singular value spectrum
+˜S1= diag(˜s 1, . . . ,˜s rϵ1) and the corresponding singular vector matrix ˜U1= (˜u 1, . . . ,˜u rϵ1)∈ Rn×rϵ1,rϵ1<2ndenotes
+the effective rank obtained from the first step. Then perform the second step SVD, ˆUˆSˆVT=˜U1˜S1, on˜U1˜S1∈ Rn×rϵ1,
+use the same thresholdϵto truncate the new singular value spectrum ˆs 1≥ ··· ≥ˆs min{n,r ϵ1}inˆS, retain the singular
+values greater thanϵand their corresponding singular vectors and form the matrix ˆU1∈ Rn×rϵ2, wherer ϵ2< nis
+the final effective rank of the second SVD and defines the dimensionr ϵof the macroscopic state asr ϵ=rϵ2.
+8
+
+--- PAGE 9 ---
+
+The final coarse-grained strategy is given by the linear transformationϕ(x) =Wx, where the parameter matrix is
+defined asW= ˆUT
+1. The coarse-grained strategy construction process in algorithmic format and detailed description
+can be found in Appendix C.
+2.2.5 Expansion: Local causal emergence in nonlinear dynamics
+The GIS we mentioned earlier are all special forms of linear dynamics with added random noise. However, in
+reality, most system dynamics are nonlinear. Therefore, in order to measure the CE of nonlinear GIS, we need to
+perform special processing on the system, and one of the most effective methods is local linearization. A nonlinear GIS
+refers to a dynamical system in the form of Eq.(2.1). Although we cannot obtain a known global parameter matrix
+ofAand Σ, if the functionfis a continuously differentiable function, we can perform a first-order Taylor expansion
+on it in the domainf(x) =f(x′) +∇f(x′)(x−x′) +o(x−x′), which can be approximated as a linear function about
+xin a very small interval centered onx′, and the function approximation is equivalent to a linear mapping. We can
+define For the variablex tat any given time, its local iteration parameters areA xt=∇f(x′
+t)≈ ∇f(x t).
+Therefore, for nonlinear systems, we can quantify their local approximate dynamical reversibility as
+Γxt
+α=2π
+αn
+2
+pdet(AT
+xtΣ−1
+xtAxt)1
+2−α
+4pdet(Σ−1
+xt)α
+4, (2.14)
+And obtain its local CE
+∆Γxt
+α(ϵ) =1
+rϵ"
+(1
+2−α
+4)rϵX
+i=1lnsxt
+i+α
+4rϵX
+i=1lnκxt
+i#
+−1
+n"
+(1
+2−α
+4)rsX
+i=1lnsxt
+i+α
+4rκX
+i=1lnκxt
+i#
+. (2.15)
+Its value depends on two singular value spectra nearx t, one is the singular value spectrumsxt
+1≥ ··· ≥sxtncor-
+responding to the local inverse covariance matrixA xtΣ−1
+xtAT
+xtof backward dynamics, and the other is the singular
+value spectrumκxt
+1≥ ··· ≥κxtnof Σ−1
+xt. Therefore, our framework can also be extended to general forms of nonlinear
+dynamics.
+To obtain the global CE of the entire system, we can use the averaging method for the local CE to obtain
+¯Γxt
+α=1
+|X|Z
+XΓxt
+αdxt,(2.16)
+which is called global approximate reversibility, and CE can be derived from it.
+However, the above method may produce different effective ranksr ϵand coarse-graining strategies in different
+local regions (like Fig.5e and f in Section 2.3.3). For general problems, ifx t+1is approximately distributed within
+the intervalX, andAT
+xtΣ−1
+xtAxtand Σ−1
+xtdo not fluctuate or diverge significantly, we can first randomly sample and
+then average the parameter matrix to obtainATΣ−1A=
+AT
+xtΣ−1
+xtAxt
+xt∈Xand Σ−1=
+Σ−1
+xt
+xt∈Xto calculate the
+two global inverse covariance matrices. Both matrices are dependent only on the spatialXand are independent of
+time, yielding the same results regardless of the system’s evolution. Finally, we can calculate global CE based on
+the definition of Γ αand empirically verify that it is more advisable to first average the two covariance matrices and
+then calculate the global approximate dynamical reversibility because it better captures the essence of the system’s
+dynamics, yielding a global singular value spectrum and coarse-graining strategy, rather than having different results
+for each part. This result is similar to the result of first calculating the local Γxtαand then calculating the average
+value under the condition thatXis stable and finite as ¯Γxtα≈Γα. The proof of the approximation can be found in
+Appendix D.1.
+The above is our theoretical part. In the next section, we will show the results of applying our framework to
+some practical cases.
+2.3 Experiments
+In this section, we will provide the results of three numerical experimental examples to show the concepts and
+conclusions derived in the previous sections. The first two are for GIS with known models, and the third one is the
+application applied on a neural network trained by the time series data generated by a Susceptible-Infected-Recovered
+(SIR) model.
+9
+
+--- PAGE 10 ---
+
+(a) (b)
+(e) (f)
+(k)
+(m)(i)
+(n)(c)(l)(j)
+(g) (h)(d)Malthusian￿growth￿models Discretized￿Brownian￿motion
+(o)
+Figure 4: Analytical solutions obtained from numerical simulations of known models. (a) A Malthusian growth
+mode wherex 3, x4are copies ofx 1, x2. (b) A sample of trajectory generated by the Malthusian growth models with
+growth rates of 0.2 and 0.05.x i,i= 1,2,3,4, are micro-states, whiley 1andy 2are theoretical macro-states obtained
+by coarse-graining. (c) The backward dynamics inverse covariance matrixATΣ−1Awhenr(A) = 2. (d)ATΣ−1A
+after random perturbations toA. (e) The singular value spectrum ofATΣ−1Aand Σ−1whenATΣ−1Aonly has two
+singular values. Clear CE can be calculated as ∆Γ α(0) = 0.4034. (f) The singular value spectrum ofATΣ−1Aand
+Σ−1whenAis perturbed. The degree of Vague CE is ∆Γ α(ϵ) = 0.4195 whenϵ= 2. (g) Coarse-graining parameterW
+obtained by truncatingUin the presence of Clear CE, the number of columns represents the macroscopic dimension,
+and the number of rows represents the microscopic dimension. (h) The coarse-graining parameterWfor the vague
+CE case, the first macro-state dimension is determined byx 1, x3, and the second macro-state dimension is determined
+byx 2, x4. (i) The samples of trajectories of the noise termε tin Brownian motion. (j) ParameterAof the drift
+vectorµ=a 0+Ax t. (k) and (l) show the inverse of the covariance matrix of forward and backward dynamics,
+which is Σ−1andATΣ−1A. (m) Singular value spectra of Σ−1andATΣ−1Awithϵ= 0.6. (n) Approximate CE
+based on SVD ∆ΓW
+α(ϵ) = ˆγW
+α(ϵ)−γ α= 0.4907, which is close to the true value ∆Γ α(ϵ) = 0.5167. ∆ΓW
+α(ϵ) obtained
+byϕ(x t) =Wx tis closer to the true value ∆Γ α(ϵ) than ∆ΓUT
+1α(ϵ) or ∆ΓVT
+1α(ϵ) which directly useϕ(x t) =UT
+1xtor
+ϕ(xt) =VT
+1xt. (o) The optimal coarse-graining strategy parameter matrixW, which preserves the non-conflicting
+2nd and 3th dimensions, along with the 1st and 5th dimensions with larger singular valuesκ 1ands 1
+10
+
+--- PAGE 11 ---
+
+2.3.1 Malthusian growth models
+The first example contains 4 variables, in which the first two variablesx 1, x2follow the Malthusian growth model
+[57] with different growth rates of 0.2 and 0.05. To study CE, we define the other two variablesx 3, x4as the copies
+of the first two variables shown as Fig.4a, thus, they are redundant dimensions. Ifx= (x 1, x2, x3, x4), the evolution
+ofxis a GISx t+1=a0+Ax t+εt, εt∼ N(0, σ2I4) asx t, xt+1∈ R4,σ2= 0.1,a 0= 0, and
+A=
+1.2 0 0 0
+0 1.05 0 0
+1.2 0 0 0
+0 1.05 0 0
+.(2.17)
+A sample of evolutionary trajectories generated by this model is shown in Fig.4b,y 1andy 2are theoretical macro-
+states obtained by coarse-graining. In this model, Σ =σ2·I4is a full rank matrix, so we only need to study the
+inverse backward dynamics covariance matrixATΣ−1A(Fig.4c). This matrix only has two singular values as the
+singular value spectrum is shown in Fig.4e withr= 2<4, the horizontal axis represents the sequence number of
+singular values arranged in descending order ass 1≥ ··· ≥s 4, while the vertical axis represents the magnitude of
+singular valuess i, so clear CE can be calculated as ∆Γ α(0) = 0.4034. Fig.4g shows the coarse-graining parameter
+W∈ R2×4obtained by methods in Section 2.2.4, which is equal to truncating the orthogonal matrixUafter SVD of
+ATΣ−1Ain this special case. When clear CE exists, variablesx 1andx 2hold all the relevant information contained
+withinx 3andx 4. Therefore, the role ofϕ(x) =Wxis to remove the last two dimensions and only retain the first
+two dimensions ofxto describe the evolution of the growth model.
+To show the concept of vague CE, we can add some perturbations toAand obtain
+A=
+1.2 0 0 0
+0 1.05 0.001 0
+1.22 0 0.4 0.1
+0 1.06 0.03 0.5
+(2.18)
+andATΣ−1A(Fig.4d) is a full rank matrix asr=n= 4. Then clear CE ∆Γ α(0) = 0. However, by observing the
+singular value spectrum in Fig.4f, we can see that only two dimensions have significant impacts, so we need to calculate
+vague CE. By using the threshold selection asϵ= 2, vague CE can be calculated as ∆Γ α(ϵ) = 0.4195. According to
+Section 2.2.4, the coarse-graining parameterWis shown in Fig.4h, the columns represent the macroscopic dimensions,
+and the rows represent the microscopic dimensions. Due to disturbances,x 3andx 4also contain some independent
+information.ϕ(x) =Wx,W=UT
+1, is to mergex 1andx 3,x2andx 4by weighted summation, and the two row-
+vectors that make upWare exactly equal to the singular vectors corresponding to the two largest singular values
+s1, s2.
+This case illustrates that sometimes high dimensions may reduce the efficiency of reversibility of a system due
+to dimensional redundancy. Retaining only the maximumr ϵsingular values of the inverse covariance matrix can
+improve the efficiency of reversibility and generate CE.
+2.3.2 Discretized Brownian motion
+The design of this example is to demonstrate the need to simultaneously filter for singular values of Σ−1and
+ATΣ−1A. Discretized Brownian motion is an approximation of continuous Brownian motion in discrete time, which
+is always used for numerical simulation and stochastic process modeling. Eq.(2.2) can be regarded as a discrete
+version of the Ornstein-Uhlenbeck (OU) [58] process. In this model,µ=a 0+Ax tis the drift vector, which influences
+the evolution of the state, andAis given as
+A=
+2.5819 0 0 1.6411 0 0 0 0
+0 1.1298 0.0672 0 0 0 0 0
+0 0 1.0539 0 0 0 0 0
+0 0 0 2.4617 0 0 0 0
+0 0 0 0 0.3162 0 0 0
+0 0 0 0−0.1581 0.6123 0 0
+0 0 0 0 0 0 0.5477 0
+0 0 0 0 0 0−0.0890 0.2519
+,(2.19)
+anda 0= 0. Covariance matrix Σ representing the diffusion coefficient, which determines the magnitude and corre-
+lation of random fluctuations across dimensions ofε tlike Fig.4i.
+11
+
+--- PAGE 12 ---
+
+As we setAas shown in Fig.4j, after perform SVD on Σ−1andATΣ−1Ain Fig.4k and Fig.4l, we can obtain
+singular vector matricesU= (u 1,···, u n) andV= (v 1,···, v n) as
+U=
+1 0 0 0 0 0 0 0
+0 1 0 0 0 0 0 0
+0 0 1 0 0 0 0 0
+0 0 0 1 0 0 0 0
+0 0 0 01√
+21√
+20 0
+0 0 0 0−1√
+21√
+20 0
+0 0 0 0 0 01√
+21√
+2
+0 0 0 0 0 0−1√
+21√
+2
+, V=
+0 0 0 01√
+20 01√
+2
+01√
+21√
+20 0 0 0 0
+0−1√
+21√
+20 0 0 0 0
+0 0 0 0−1√
+20 01√
+2
+1 0 0 0 0 0 0 0
+0 0 0 0 0 1 0 0
+0 0 0 0 0 0 1 0
+0 0 0 1 0 0 0 0
+(2.20)
+and diagonal matrices of singular values
+S= diag(2,1.5,1.3,1.01,0.2,0.12,0.1,0.05)
+K= diag(1.6,1.25,1.1,1.05,0.5,0.4,0.25,0.1).(2.21)
+After obtaining the singular value spectra in Fig.4m, we specifyϵ= 0.6 to get ∆Γ α(ϵ) = 0.5167 and the number of
+macro-states isr ϵ= 4. To obtain theoretical values ∆Γ α(ϵ) = 0.5167,s 1,···, s 4andκ 1,···, κ 4should be retained.
+As we get the singular value spectrum of Σ−1andATΣ−1Ain Fig.4m, we can also calculate the coarse-graining
+strategy based on SVD. According to Section 2.2.4, we can obtain the optimal coarse-graining strategy parame-
+ter matrixWin Fig.4o, which preserves the non-conflicting 2nd and 3rd dimensions, along with the 1st and 5th
+dimensions with larger singular valuesκ 1ands 1. So in reality, we retaineds 1, s2, s3, s5andκ 1, κ2, κ3, κ5.
+The macro-state dynamics obtained throughϕ=Wx thave approximate dynamical reversibility ˆγW
+α(ϵ). Through
+it, we can obtain an approximate CE based on SVD ∆ΓW
+α(ϵ) = ˆγW
+α(ϵ)−γ α= 0.4907, which is close to the true
+∆Γα(ϵ) = 0.5167. By comparing in Fig.4n, we can see that ∆ΓW
+α(ϵ) obtained byϕ(x t) =Wx tis closer to the true
+value ∆Γ α(ϵ) than ∆ΓUT
+1α(ϵ) or ∆ΓVT
+1α(ϵ) which directly useϕ(x t) =UT
+1xtorϕ(x t) =VT
+1xtand only consider one
+direction in forward and backward dynamics.
+2.3.3 SIR based on NN
+Most systems in reality are unable to obtain precise dynamic models to calculate analytical solutions for CE, as
+demonstrated in the previous two examples. However, we can train a neural network to obtain approximate dynamics
+from observed time series data. Our third case is to show the phenomenon of CE obtained by a well-trained neural
+network (NN) on the training time series data generated by a Susceptible-Infected-Recovered (SIR) dynamical model
+[59] as shown in Fig.5b with the following dynamics:
+
+
+dS
+dt=−βSI,
+dI
+dt=βSI−γI,
+dR
+dt=γI,(2.22)
+as shown in Fig.5a, whereS, I, R∈[0,1] represent the rate of susceptible, infected, and recovered individuals in a
+population,β= 1 andγ= 0.5 are parameters for infection and recovery rates.
+To generate the time series data of the micro-state, we adopt the same method as in our previous work of
+NIS+ [27]. We generate data by converting dS/dt,dI/dtinto ∆S/∆t,∆I/∆tas ∆t= 0.01 and (S t+∆t, It+∆t)≈
+(St, It) + (dS t/dt,dI t/dt)∆t. Then we duplicate the macro-state (S t, It) as shown in Fig.5c and added Gaussian
+random noise to form the micro-statex tas
+xt= (S t, It, St, It) +ξt, (2.23)
+whereξt∼N(0,Σ) and
+Σ =σ2
+1−1
+20 0
+−1
+21 0 0
+0 0 1−1
+2
+0 0−1
+21
+.(2.24)
+asσ2= 0.04.
+12
+
+--- PAGE 13 ---
+
+(b)
+(a)(c)
+(e) (d) (g) (f)
+(h) (i) (j) (k)
+SIR￿models
+(l)
+ (m)
+Figure 5: Numerical solution obtained by training the SIR model with a simple NN. (a) SIR model. (b) The
+processing process of NN. (1) and (3) are the variablesx tandx t+∆t at adjacent time points. (2) Dynamical model.
+(4) Simple NN model. (5) After inputtingx t, NN predictsx t+∆t as ˆx t+∆t. (6)A xtis the Jacobian matrix of the
+trained model atx t. (7) Σ xtis the covariance matrix estimated by the mean square error ofx t+∆t. (8) The numerical
+solution of Γ α. (c) Training data as NIS+. (d) The numerical solution ofATΣ−1Ain NN trained SIR model. (e)
+The numerical solution of Σ−1in NN trained SIR model. (f) Distribution ofr ϵin sample space (SIR) with different
+(S, I). (g) Distribution of ∆Γ αunder different (S, I). (h) The singular value spectrum ofATΣ−1Aand Σ−1in NN
+trained SIR model. (i) The frequency ofr ϵunder different samplesAT
+xtΣ−1
+xtAxt. (j) Maximum ∆Γ α(ϵ) = 0.8685 when
+the training period is around 50,000 asϵ= 5. (k) The changing trend of CE under differentσ, the threshold for
+trend change is aroundσ= 0.01. (l) The coarse-graining matrixWfor NN. (m) The coarse-graining matrixW NIS+
+of NIS+. For the convenience of observation, we have taken absolute values for each dimension inWandW NIS+ .
+13
+
+--- PAGE 14 ---
+
+By feeding the micro-state data into a forward neural network (NN) calledCovariance Learner Network, we
+can use this model to approximate the micro-dynamics of the SIR model. The model we trained has the following
+structure:
+•Input layer: The NN hasn= 4 input neurons, corresponding to the size of the input vectorx t.
+•Hidden layers: The network contains two hidden layers. The first hidden layer hashidden size= 64 neurons,
+followed by aLeakyReLUactivation function. The second hidden layer also hashidden size= 64 neurons, followed
+by anotherLeakyReLUactivation.
+•Output layer: The output layer contains two parts. The first part,f µ, outputs a mean vectorµof sizen. The
+second part,f L, outputs the elements of the lower triangular part of the Cholesky decomposition of the covariance
+matrix, with sizen×n.
+Formally, given an input, the network applies a series of transformations:
+h1=LeakyRELU(B 1xt+b1),
+h2=LeakyRELU(B 2h1+b2),
+µ=B µh2+bµ,
+LΣ=B Lh2+bL,(2.25)
+whereBandbdenote trainable weight matrices and biases. The predictedf(x t) and final covariance matrix are
+then computed as:
+f(xt) =µ,
+Σ =L ΣLT
+Σ.(2.26)
+After that, we use a negative logarithmic likelihood loss function (NLL) as
+NLL=1
+2h
+(xt+1−f(x t))TΣ−1
+xt(xt+1−f(x t)) + ln det(Σ xt) +nln(2π)i
+(2.27)
+to train the parameters of the dynamical functionf(x t) and the covariance matrix Σ xtsimultaneously.
+Since the quantification of our CE framework does not require a pre-setting coarse-grained strategy and the
+coarse-grained function can be directly obtained from the SVD ofATΣ−1Aafter settingr ϵ, we can directly calculate
+the degree of CE by ∆Γ αand ignore the learning processes of encoder, decoder and macro-dynamics in NIS+ as
+mentioned in [27]. Due to the nonlinearity of the SIR dynamics, we cannot directly use the CE quantification
+method of linear GIS. Instead, we approximate NN as a linear mapping at different inputx tby Taylor expansion
+(see the method in Appendix D.1). We can obtain the CE identification result and the final coarse-graining strategy
+directly by calculatingA xt=∇f(x t) as the Jacobian matrix of the trained NN model atx t. And Σ xtis the
+covariance matrix that neural networks can directly output. Due to the differences under differentx t, we can
+randomly generatex twith a uniform distribution on the domainXof the SIR dynamics and take the average value
+asATΣ−1A≈ ⟨AT
+xtΣ−1
+xtAxt⟩xt∈Xand Σ−1≈ ⟨Σ−1
+xt⟩xt∈Xto calculate ∆Γ αof the system. Fig.5b visualizes the method
+of computation for ∆Γ on a multivariate Gaussian model.
+Using the data in Fig.5c, we can perform SVD on matricesATΣ−1Aand Σ−1in Fig.5d and Fig.5e. In Fig.5h,
+we can see the singular value spectrum of matricesATΣ−1Aand Σ−1in which the horizontal axis represents the
+sequence number of singular values arranged in descending order, while the vertical axis represents the magnitude
+of singular valuess i, κi. Due to the existence of the copy operation, even the simplest NN can recognize only two
+dimensions with larger singular values asr ϵ= 2 whenϵ= 5. If we directly calculater ϵbyAT
+xtΣ−1
+xtAxtasx tis
+sampled from the test data set and plotr ϵas a matrix related toS, Iin Fig.5f, we can see that most positions satisfy
+rϵ= 2. By calculating the frequency ofr ϵunder different samplesAT
+xtΣ−1
+xtAxt, from Fig.5i we can find thatr ϵ= 2
+has the highest frequency.
+From Fig.5h,ATΣ−1Ahas two larger singular values andr ϵ= 2 asϵ= 5. In model training, we get the value
+of Vague CE as ∆Γ α(ϵ) = 0.8685 when the training period is 50,000, which is shown in Fig.5j. We can also directly
+calculate ∆Γ α(ϵ) byAT
+xtΣ−1
+xtAxtasx tis sampled from the test data set and plot ∆Γ αas a matrix related toS, Iin
+Fig.5g. Comparing Fig.5f and Fig.5g, we can see that the most stable region ofr ϵand the region with the highest
+∆Γα(ϵ) are almost identical as (S, I) roughly located within a circle with a radius of 0.5 and a center of (0,0).
+We can also compare the results of our framework and NIS+ mentioned in [27]. From Fig.5l and Fig.5m, we can
+see that the coarse-graining matrixWobtained through the singular vectors and the Jacobian matrixW NIS+ of
+the NIS+ coarse-graining encoder are similar. For the convenience of observation, we have taken absolute values for
+each dimension inWandW NIS+ . Both coarse-graining methods indicate that the first and the third micro-state
+dimensions mainly influence the first macro-state dimension, while the second and fourth micro-state dimensions
+14
+
+--- PAGE 15 ---
+
+mainly influence the second macro-state dimension. Both the values ofWandW NIS+ are consistent with the copy
+method (Fig.4a), which is used during data generation. In addition, we can test the changing trend of CE under
+differentσ. From Fig.5k, Whenσ <0.01, ∆Γ α(ϵ) is positively correlated withσ, and whenσ >0.01, the two are
+negatively correlated. We can see that the turning point for CE is aroundσ= 0.01, which is consistent with the
+value obtained by NIS+ [27].
+However, our framework addresses the decline in training efficiency associated with encoder training in NIS+,
+leading to a more streamlined and effective approach to model training and CE detection.
+3 Conclusion and discussion
+This article presents the approximate dynamical reversibility Γ αas a new exact quantification of CE for GIS. Γ α
+only depends on the singular values of forward and backward dynamic covariances Σ andA†Σ(A†)Twithout requiring
+predefined coarse-graining strategiesϕ(x) =Wx. By retaining only the maximumr ϵsingular values of Σ−1and
+ATΣ−1A, we can directly quantify CE of the system as ∆Γ α. Better than EI-based CE, approximate dynamical
+reversibility with SVD directly provides accurate CE, which significantly improves accuracy and computational
+efficiency in both analytical solution computation and NN machine learning. This lays the foundation for detecting
+and measuring CE in more complex systems such as the brain and weather.
+At the same time, we can directly obtain the optimalWbased on the singular vectors matrix of the two inverse
+covariance matrices. This method balancing the conflict between preserving singular values in Σ−1andATΣ−1A
+while also calculating ∆Γ α(ϵ) closer to theoretical values. From the directly obtainedW, we can see more clearly the
+strategies for aggregating micro-states into macro-states, where highly correlated dimensions can be aggregated and
+dimensions with too small singular values can be discarded. Traditionally quantifying CE by ∆Jrequires pre-setting
+coarse-graining strategiesϕand optimizing its parametersW∈ Rk×n. When optimizingW, we must specify a subset
+ofRk×nin advance as a limited range, such asW†=WT, to avoidJ Mbeing divergent, which is very subjective
+and complicated. The method in this article can save the resources occupied by the process of optimizingW, the
+conclusion is more reasonable and interpretable while providing a reference value for observing and predicting the
+macroscopic state of the system.
+Compared to the SVD-based CE of TPM, ∆Γ αfor GIS offers clearer insights into the correlation between SVD-
+based and EI-based CE. Both indicators correlate positively withAand negatively with Σ. Through assumptions
+and calculations, ∆Γ α(ϵ) and ∆J∗are approximately linear and positively correlated as ∆Γ α(ϵ)≃(1−α
+4)∆J∗.
+The equal sign holds when the backward dynamics is a normalized normal distribution. In general, we can randomly
+generateAand Σ to see a clear linear correlation in the scatter plot of ∆Γ α(ϵ) and ∆J∗. We also reveal how
+the parameterαaffects determinacy and degeneracy. Although these results can be obtained through numerical
+simulations on TPM, it is difficult to directly prove the underlying reasons without the help of GIS. Moreover, since
+most real-world data exist in continuous spaces rather than binary distributions, studying SVD-based CE in GIS has
+broader applicability.
+In addition to the concept of reversible quantification of CE itself, another important innovation is the object of
+SVD. It is common to use SVD to study the dynamics of systems. For example, Chen et al. use singular values of
+the system’s ensemble matrix to find the critical phase transition of the system [60, 61], like Earth [62] and Stock
+markets [63]. In addition to studying the free evolution of systems, Antolus et al. also consider SVD as a key factor
+in control theory [64–66]. The system can be reduced based on SVD, and controlling the dimensions corresponding
+to the largest few singular values can determine the state transition of the whole system. Similarly, for complex
+NN models, the memory usage of the parameters can be reduced by retaining only the major singular values of the
+gradient matrix [67–69]. These contents provide references for our expansion of SVD-based CE.
+In synergetics [70], model dimensionality can be reduced through adiabatic approximation or exact elimination.
+Stable modes are removed either by the adiabatic elimination method, which simplifies the derivation of order param-
+eter equations, or by the systematic elimination method, which expresses the slaving principle in exact mathematical
+form for broader applicability. Both approaches analyze the eigenstructure of the system’s linearized parameterA
+(or Jacobian) matrix to identify slowly varying unstable modes (order parameters) and eliminate fast-decaying stable
+modes, yielding a low-dimensional description of the system’s steady states and dynamics. This framework, however,
+also focuses on system parameters and neglects the influence of noise transformations.
+We discover that traditional research about dimensionality reduction and macro-states of dynamical systems
+focuses on the dynamical function, often overlooking noise and its covariance matrix, and disregarding random noise
+as mere error or disturbance. However, we find that the covariance matrix also contains crucial information about
+the system. Our work focuses on covariance matrices, and the covariance matrix of backward dynamicsA†Σ(A†)T
+precisely contains both the dynamic parametersAand the covariance of forward dynamics Σ. Whether calculating
+15
+
+--- PAGE 16 ---
+
+CE or deriving coarse-graining strategies, we consider both the dynamics and randomness of the system. This is an
+important part of our new research.
+While our approach has made progress, several challenges remain unresolved. The first limitation is that our
+model is currently restricted to linear GIS, with nonlinear GIS approximated in a locally linear form. However, this
+approximation introduces stability issues, as the gradient of nonlinear functions may be ill-conditioned. In particular,
+cases where∇f(x) = 0 or∇f(x)→ ∞lead to the breakdown of our framework. To address this, incorporating
+higher-order derivatives as a refined CE metric warrants further investigation.
+The second issue arises when time is continuous rather than discrete, the existing CE quantification lacks objective
+formulations. The approach in this study discretizes time, converting differential equations into difference equations,
+where the choice of hyperparameter ∆tstrongly influences CE. As ∆t→0, state transitionsx t→x t+∆t exhibit
+minimal variation, causing the rate of change to vanish. For continuous-time stochastic differential equations, a more
+principled CE measure is required to account for infinitesimal evolution dynamics.
+The third issue is that both SVD-based and EI-based CE quantification methods require training an NN to infer
+dynamics when the governing equations are unknown. However, NN-based approaches are data-dependent and prone
+to parameter estimation errors, particularly in capturing interdimensional correlations. In our case, a multivariate
+Gaussian model approximates both the dynamical function and covariance. Yet, under high noise or limited data, the
+learned dynamics may deviate from the true system, leading to unreliable CE estimates. For systems with unknown
+models, it is crucial to develop representations that jointly approximate both the underlying dynamics and noise
+structure.
+Future work will focus on optimizing the existing framework and extending its application to more complex
+systems. In numerical simulations, machine learning can be leveraged to learn intricate dynamical models, such
+as Vicsek and Kuramoto, which are analytically intractable. This allows for data-driven CE estimation and the
+exploration of its relationship with critical states. Additionally, our approach can be applied to real-world datasets,
+such as meteorological and EEG data, to identify practical problems where CE provides meaningful insights.
+4 Supplementary Material
+The supplementary material provides detailed calculation processes for effective informationEIand approximate
+dynamical reversibility Γ α, from the simplest one-dimensional system to general high-dimensional situations. Espe-
+cially forEIand Γ αin cases whereAis a full-rank or non-square matrix, we provide computational references. After
+providing a detailed proof process, we use randomly generated scatter plots to show the linear correlation between
+two indicators Γ αandJ, as well as ∆Γ α(ϵ) and ∆J∗based on which. The original coarse-graining strategy and the
+coarse-graining strategy of the standardized model, which were not mentioned in the article, have also been discussed
+in the supplementary material. In the end, we add the case of the Markov Gaussian system, providing ideas for
+combining our framework with integrated information theory, Markov chain with TPM, and even neural data.
+Acknowledgments:This work is inspired by the insightful discussions held in the ”Causal Emergence” series
+reading groups organized by Swarma Club and the ”Swarma-Kaifeng” Workshop. Sincere thanks to Mr. Jiayun Wu,
+Ms. Ruiyang Feng, Mr. Zhang Zhang, Ms. Ruyi Tao, Mr. Keng-Hou Leong, Ms. Wanting Su, Mr. Aobo Lyu,
+and Mr. Muyun Mou for their suggestions and support on theory, methods, and writing. We would also like to
+extend our sincere gratitude to Prof. Yizhuang You, Dr. Peng Cui, Dr. Jing He, Dr. Chaochao Lu, and Dr. Yanbo
+Zhang for their invaluable contributions and insightful discussions. We express our appreciation for the support from
+the Save 2050 Programme, a joint initiative of Swarma Club and X-OrderSwarma Research. Additionally, we are
+grateful for the support received from Swarma Research. We also thank the large language models ChatGPT and
+Deepseek for their assistance in refining our paper writing.
+Data Availability Statement:All the codes and data are available at:https://github.com/kilovoltage/
+SVD-based_CE_Gaussian.
+References
+[1] S. E. Jørgensen and F. M¨ uller, “Ecosystems as complex systems,”Handbook of Ecosystem Theories and Man-
+agement. CRC Press LLC, Boca Raton, pp. 5–20, 2000.
+[2] R. T. Wicks, S. C. Chapman, and R. Dendy, “Mutual information as a tool for identifying phase transitions in
+dynamical complex systems with limited data,”Physical Review E, vol. 75, no. 5, p. 051125, 2007.
+16
+
+--- PAGE 17 ---
+
+[3] C. Hartman and B. Benes, “Autonomous boids,”Computer Animation and Virtual Worlds, vol. 17, no. 3-4,
+pp. 199–206, 2006.
+[4] S. Jingnan, J. He, and X. Gao, “Neurofeedback training of control network improves ssvep-based bci performance
+in children,” 2021.
+[5] O. Sporns, J. Faskowitz, A. S. Teixeira, S. A. Cutts, and R. F. Betzel, “Dynamic expression of brain functional
+systems disclosed by fine-scale analysis of edge time series,”Network Neuroscience, vol. 5, no. 2, pp. 405–433,
+2021.
+[6] T. F. Varley,Uncovering Higher-Order Structures in Complex Systems with Multivariate Information Theory.
+Indiana University, 2023.
+[7] Z. Zhao, Y. Zhou, B. Liu, J. He, J. Zhao, Y. Cai, J. Fan, X. Li, Z. Wang, Z. Lu,et al., “Two-photon synthetic
+aperture microscopy for minimally invasive fast 3d imaging of native subcellular behaviors in deep tissue,”Cell,
+vol. 186, no. 11, pp. 2475–2491, 2023.
+[8] T. Dong, J. He, S. Wang, L. Wang, Y. Cheng, and Y. Zhong, “Inability to activate rac1-dependent forgetting
+contributes to behavioral inflexibility in mutants of multiple autism-risk genes,”Proceedings of the National
+Academy of Sciences, vol. 113, no. 27, pp. 7644–7649, 2016.
+[9] L. Ma, X.-D. Yang, F. Yang, X.-J. Zhou, and Z.-W. Wu, “Unveiling the early stage evolution of local atomic
+structures in the crystallization process of a metallic glass,”Chinese Physics B, vol. 33, no. 3, p. 036402, 2024.
+[10] H. S. Bennett and J. J. Filliben, “A systematic approach for multidimensional, closed-form analytic modeling:
+minority electron mobilities in ga1- xalxas heterostructures,”Journal of Research of the National Institute of
+Standards and Technology, vol. 105, no. 3, p. 441, 2000.
+[11] A. Albrecht, D. Coulson, P. Ferreira, and J. Magueijo, “Causality, randomness, and the microwave background,”
+Physical Review Letters, vol. 76, no. 9, p. 1413, 1996.
+[12] T. Schreiber, “Measuring information transfer,”Physical review letters, vol. 85, no. 2, p. 461, 2000.
+[13] M. G. Rosenblum and A. S. Pikovsky, “Detecting direction of coupling in interacting oscillators,”Physical
+Review E, vol. 64, no. 4, p. 045202, 2001.
+[14] D. Harnack, E. Laminski, M. Sch¨ unemann, and K. R. Pawelzik, “Topological causality in dynamical systems,”
+Physical review letters, vol. 119, no. 9, p. 098301, 2017.
+[15] G. Tononi and O. Sporns, “Measuring information integration,”BMC neuroscience, vol. 4, pp. 1–20, 2003.
+[16] E. P. Hoel, L. Albantakis, and G. Tononi, “Quantifying causal emergence shows that macro can beat micro,”
+Proceedings of the National Academy of Sciences, vol. 110, no. 49, pp. 19790–19795, 2013.
+[17] E. P. Hoel, “When the map is better than the territory,”Entropy, vol. 19, no. 5, p. 188, 2017.
+[18] F. E. Rosas, P. A. M. Mediano, H. J. Jensen, A. K. Seth, A. B. Barrett, R. L. Carhart-Harris, and D. Bor,
+“Reconciling emergences: An information-theoretic approach to identify causal emergence in multivariate data,”
+PLOS Computational Biology, vol. 16, p. e1008289, Dec 2020.
+[19] L. Barnett and A. K. Seth, “Dynamical independence: discovering emergent macroscopic processes in complex
+dynamical systems,”Physical Review E, vol. 108, no. 1, p. 014304, 2023.
+[20] B. Yuan, J. Zhang, A. Lyu, J. Wu, Z. Wang, M. Yang, K. Liu, M. Mou, and P. Cui, “Emergence and causality
+in complex systems: A survey of causal emergence and related quantitative studies,”Entropy, vol. 26, no. 2,
+p. 108, 2024.
+[21] E. P. Hoel, L. Albantakis, W. Marshall, and G. Tononi, “Can the macro beat the micro? integrated information
+across spatiotemporal scales,”Neuroscience of Consciousness, vol. 2016, no. 1, p. niw012, 2016.
+[22] S. Bornholdt, “Boolean network models of cellular regulation: prospects and limitations,”Journal of the Royal
+Society interface, vol. 5, no. suppl 1, pp. S85–S94, 2008.
+[23] E. W. Weisstein, “Cellular automaton,”https://mathworld. wolfram. com/, 2002.
+17
+
+--- PAGE 18 ---
+
+[24] P. Chvykov and E. Hoel, “Causal geometry,”Entropy, vol. 23, no. 1, p. 24, 2020.
+[25] K. Liu, B. Yuan, and J. Zhang, “An exact theory of causal emergence for linear stochastic iteration systems,”
+Entropy, vol. 26, no. 8, 2024.
+[26] J. Zhang and K. Liu, “Neural information squeezer for causal emergence,”Entropy, vol. 25, no. 1, p. 26, 2022.
+[27] M. Yang, Z. Wang, K. Liu, Y. Rong, B. Yuan, and J. Zhang, “Finding emergence in data by maximizing effective
+information,”National Science Review, p. nwae279, 2024.
+[28] C. W. Reynolds, “Flocks, herds and schools: A distributed behavioral model,” inProceedings of the 14th annual
+conference on Computer graphics and interactive techniques, pp. 25–34, 1987.
+[29] S. M. Smith, K. L. Miller, G. Salimi-Khorshidi, M. Webster, C. F. Beckmann, T. E. Nichols, J. D. Ramsey, and
+M. W. Woolrich, “Network modelling methods for fmri,”NeuroImage, vol. 54, no. 2, pp. 875–891, 2011.
+[30] P. L. Williams and R. D. Beer, “Nonnegative decomposition of multivariate information,”arXiv preprint
+arXiv:1004.2515, 2010.
+[31] A. I. Luppi, P. A. Mediano, F. E. Rosas, D. J. Harrison, R. L. Carhart-Harris, D. Bor, and E. A. Stamatakis,
+“What it is like to be a bit: an integrated information decomposition account of emergent mental phenomena,”
+Neuroscience of consciousness, vol. 2021, no. 2, p. niab027, 2021.
+[32] J. Song and S. Ermon, “Understanding the limitations of variational mutual information estimators,” 2020.
+[33] C. Kaplanis, P. Mediano, and F. Rosas, “Learning causally emergent representations,” inNeurIPS 2023 work-
+shop: Information-Theoretic Principles in Cognitive Systems, 2023.
+[34] D. McSharry, C. Kaplanis, F. Rosas, and P. A. Mediano, “Learning diverse causally emergent representations
+from time series data,”Advances in Neural Information Processing Systems, vol. 37, pp. 119547–119572, 2024.
+[35] Z. C. Chao, Y. Nagasaka, and N. Fujii, “Long-term asynchronous decoding of arm motion using electrocortico-
+graphic signals in monkey,”Frontiers in neuroengineering, vol. 3, p. 1189, 2010.
+[36] S. D. Muthukumaraswamy and D. T. Liley, “1/f electrophysiological spectra in resting and drug-induced states
+can be explained by the dynamics of multiple oscillatory relaxation processes,”NeuroImage, vol. 179, pp. 582–
+595, 2018.
+[37] D. Byrne and D. Nelson, “Attraction as a linear function of proportion of positive reinforcements.,”Journal of
+personality and social psychology, vol. 1, no. 6, p. 659, 1965.
+[38] J. Zhang, R. Tao, K. H. Leong, M. Yang, and B. Yuan, “Dynamical reversibility and a new theory of causal
+emergence based on SVD,”npj Complexity, vol. 2, p. 3, Jan. 2025.
+[39] A. Zhang and M. Wang, “Spectral state compression of markov processes,”IEEE transactions on information
+theory, vol. 66, no. 5, pp. 3202–3231, 2019.
+[40] C. Lee and D. J. Wilkinson, “A review of stochastic block models and extensions for graph clustering,”Applied
+Network Science, vol. 4, no. 1, pp. 1–50, 2019.
+[41] K. Liu, X. L¨ u, F. Gao, and J. Zhang, “Expectation-maximizing network reconstruction and most applicable
+network types based on binary time series data,”Physica D: Nonlinear Phenomena, vol. 454, p. 133834, 2023.
+[42] A. Darmochwa l, “The euclidean space,”Formalized Mathematics, vol. 2, no. 4, pp. 599–603, 1991.
+[43] Z. J. Jurek, “On stability of probability measures in euclidean spaces,” inProbability Theory on Vector Spaces
+II: Proceedings, B la˙ zejewko, Poland, September 17–23, 1979, pp. 128–145, Springer, 2006.
+[44] W. Dunsmuir and E. J. Hannan, “Vector linear time series models,”Advances in Applied Probability, vol. 8,
+no. 2, pp. 339–364, 1976.
+[45] L. Arnold, C. K. Jones, K. Mischaikow, G. Raugel, and L. Arnold,Random dynamical systems. Springer, 1995.
+[46] M. I. Jordanet al., “Why the logistic function? a tutorial discussion on probabilities and neural networks,”
+1995.
+18
+
+--- PAGE 19 ---
+
+[47] O. Knill, “Cauchy–binet for pseudo-determinants,”Linear Algebra and its Applications, vol. 459, pp. 522–547,
+2014.
+[48] P. D. Lax,Functional analysis. John Wiley & Sons, 2014.
+[49] R. N. Bracewell, “The fourier transform,”Scientific American, vol. 260, no. 6, pp. 86–95, 1989.
+[50] J. C. A. Barata and M. S. Hussein, “The moore–penrose pseudoinverse: A tutorial review of the theory,”
+Brazilian Journal of Physics, vol. 42, pp. 146–165, 2012.
+[51] R. A. Horn and C. R. Johnson,Matrix analysis. Cambridge university press, 2012.
+[52] M. Yang, Z. Wang, K. Liu, Y. Rong, B. Yuan, and J. Zhang, “Finding emergence in data: causal emergence
+inspired dynamics learning,”arXiv preprint arXiv:2308.09952, 2023.
+[53] E. Hoel, “Causal emergence 2.0: Quantifying emergent complexity,”arXiv preprint arXiv:2503.13395, 2025.
+[54] B. Klein and E. Hoel, “The emergence of informative higher scales in complex networks,”Complexity, vol. 2020,
+pp. 1–12, 2020.
+[55] R. Comolatti and E. Hoel, “Causal emergence is widespread across measures of causation,”arXiv preprint
+arXiv:2202.01854, 2022.
+[56] E. Hoel,The world behind the world: Consciousness, Free Will, and the Limits of Science. Simon and Schuster,
+2024.
+[57] O. Galor and D. N. Weil, “Population, technology, and growth: From malthusian stagnation to the demographic
+transition and beyond,”American economic review, vol. 90, no. 4, pp. 806–828, 2000.
+[58] R. A. Maller, G. M¨ uller, and A. Szimayer, “Ornstein–uhlenbeck processes and extensions,”Handbook of financial
+time series, pp. 421–437, 2009.
+[59] J. Satsuma, R. Willox, A. Ramani, B. Grammaticos, and A. S. Carstea, “Extending the sir epidemic model,”
+Physica A: Statistical Mechanics and its Applications, vol. 336, no. 3-4, pp. 369–375, 2004.
+[60] Y. Sun, G. Hu, Y. Zhang, B. Lu, Z. Lu, J. Fan, X. Li, Q. Deng, and X. Chen, “Eigen microstates and their
+evolutions in complex systems,”Communications in Theoretical Physics, vol. 73, no. 6, p. 065603, 2021.
+[61] G. Hu, T. Liu, M. Liu, W. Chen, and X. Chen, “Condensation of eigen microstate in statistical ensemble and
+phase transition,”Science China Physics, Mechanics & Astronomy, vol. 62, pp. 1–8, 2019.
+[62] J. Fan, J. Meng, J. Ludescher, X. Chen, Y. Ashkenazy, J. Kurths, S. Havlin, and H. J. Schellnhuber, “Statistical
+physics approaches to the complex earth system,”Physics reports, vol. 896, pp. 1–84, 2021.
+[63] D. Sornette, “Physics and financial economics (1776–2014): puzzles, ising and agent-based models,”Reports on
+progress in physics, vol. 77, no. 6, p. 062001, 2014.
+[64] K. Gallivan, E. Grimme, and P. Van Dooren, “Asymptotic waveform evaluation via a lanczos method,”Applied
+Mathematics Letters, vol. 7, no. 5, pp. 75–80, 1994.
+[65] S. Gugercin, “An iterative svd-krylov based method for model reduction of large-scale dynamical systems,”
+Linear Algebra and its Applications, vol. 428, no. 8-9, pp. 1964–1986, 2008.
+[66] A. C. Antoulas, “An overview of approximation methods for large-scale dynamical systems,”Annual reviews in
+Control, vol. 29, no. 2, pp. 181–190, 2005.
+[67] J. Xue, J. Li, and Y. Gong, “Restructuring of deep neural network acoustic models with singular value decom-
+position.,” inInterspeech, pp. 2365–2369, 2013.
+[68] J. Zhang, Q. Lei, and I. Dhillon, “Stabilizing gradients for deep neural networks via efficient svd parameteriza-
+tion,” inInternational Conference on Machine Learning, pp. 5806–5814, PMLR, 2018.
+[69] M. M. Bejani and M. Ghatee, “Theory of adaptive svd regularization for deep neural networks,”Neural Networks,
+vol. 128, pp. 33–46, 2020.
+[70] D. Wu, L. Cao, and L. Chen,Principles and Applications of Synergetics. Huazhong University of Science and
+Technology Press, 1990.
+19
