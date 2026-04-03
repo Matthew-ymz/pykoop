@@ -2513,6 +2513,8 @@ def plot_station_with_map(
     edge_linewidth=0.4,
     sort_points=True,
     show_colorbar=True,
+    colorbar_location="right",
+    colorbar_label=None,
     return_fig=False,
 ):
     """
@@ -2573,6 +2575,7 @@ def plot_station_with_map(
         figsize=figsize,
         dpi=dpi,
         subplot_kw={"projection": ccrs.PlateCarree()},
+        constrained_layout=True,
     )
     axes = np.atleast_1d(axes).ravel()
 
@@ -2619,27 +2622,41 @@ def plot_station_with_map(
             zorder=5,
         )
 
-        ax.set_title(str(panel["title"]), fontsize=14)
+        ax.set_title(str(panel["title"]), fontsize=12)
         gl = ax.gridlines(draw_labels=True, linestyle=":", alpha=0.5)
         gl.top_labels = False
         gl.right_labels = False
-        gl.xlabel_style = {"size": 10}
-        gl.ylabel_style = {"size": 10}
+        gl.xlabel_style = {"size": 8}
+        gl.ylabel_style = {"size": 8}
 
     for ax in axes[num_panels:]:
         ax.set_visible(False)
 
     if show_colorbar and scatter_ref is not None:
-        cbar = fig.colorbar(
-            scatter_ref,
-            ax=[ax for ax in axes[:num_panels]],
-            fraction=0.028,
-            pad=0.03,
-            shrink=0.95,
-        )
-        cbar.ax.tick_params(labelsize=10)
+        if colorbar_location == "right":
+            cbar = fig.colorbar(
+                scatter_ref,
+                ax=[ax for ax in axes[:num_panels]],
+                location="right",
+                fraction=0.022,
+                pad=0.02,
+                shrink=0.92,
+            )
+        elif colorbar_location == "bottom":
+            cbar = fig.colorbar(
+                scatter_ref,
+                ax=[ax for ax in axes[:num_panels]],
+                location="bottom",
+                fraction=0.05,
+                pad=0.06,
+                shrink=0.92,
+            )
+        else:
+            raise ValueError(f"不支持的 colorbar_location: {colorbar_location}")
+        if colorbar_label:
+            cbar.set_label(str(colorbar_label), fontsize=10)
+        cbar.ax.tick_params(labelsize=9)
 
-    plt.tight_layout()
     if return_fig:
         return fig, axes[:num_panels]
     plt.show()
@@ -3139,8 +3156,12 @@ def fit_linear_gis_from_pairs(X_now, X_next, fit_intercept=False, ridge=0.0, reg
     C11 = (x_next_center.T @ x_next_center) / n_samples
 
     C00_reg = C00 + (ridge + regularization) * np.eye(dim, dtype=float)
-    K_raw = _regularized_pinv(C00_reg, regularization=regularization) @ C01
-    A = K_raw.T
+    # Keep the returned empirical operator aligned with the column-vector
+    # dynamics convention used elsewhere in the repo, so K_raw and A refer
+    # to the same matrix instead of a transpose pair.
+    empirical_regression = _regularized_pinv(C00_reg, regularization=regularization) @ C01
+    K_raw = empirical_regression.T
+    A = K_raw
 
     if fit_intercept:
         intercept = mean_next - A @ mean_now
